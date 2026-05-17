@@ -1,207 +1,211 @@
-use std::{fs::File, io::{self, Read}};
+use std::io::SeekFrom;
 
-#[derive(PartialEq, Eq, Debug)]
-pub enum TokenType {
-    Cseg,
-    At,
+use crate::lexer::{Lexer, RRegister, TokenType};
 
-    // Instructions
-    Mov,
-    Movx,
-    Inc,
-    Addc,
-    Subb,
-    Ljmp,
-    Jnc,
-    Clr,
-    Lcall,
-    Xrl,
-    Add,
-    Ret,
+#[derive(Debug, PartialEq, Eq)]
+pub enum Operand {
+    Data8(u8),
+    Data16(u16),
 
-    // Registers
-    Dptr,
-    Carry,
     Acc,
+    Carry,
+    Dptr,
     Dpl,
     Dph,
-    R(u8),
+    R(RRegister),
+    PtrR(RRegister),
 
-    // Numbers
-    Address(u16),
-    Immediate(u16),
+    IramAddress(u8),
+    BitAddress(u8),
+}
 
-    // Other
-    Comma,
-    Escargot,
-    SemiColon,
+#[derive(Debug, PartialEq, Eq)]
+pub enum Instruction {
+    Mov(Operand, Operand),
+    Clr(Operand),
+    Subb(Operand, Operand),
+    Cjne(Operand, Operand, usize),
+    Inc(Operand),
+
+    Lcall(usize),
+    Jnc(usize),
+    Ljmp(usize),
+
+    Push(u8),
+    Pop(u8),
+    Ret,
+    Nop,
+
     Label(usize),
     Db(u16),
     End,
 }
 
-pub struct Lexer {
-    file_content: String,
-    index: usize,
-    line: usize
+pub struct Parser<'a> {
+    lexer: &'a mut Lexer,
 }
 
-impl Lexer {
-    pub fn new(file_path: &str) -> io::Result<Self> {
-        let mut file = File::open(file_path)?;
-        let mut contents = String::new();
-
-        file.read_to_string(&mut contents)?;
-        Ok(Self { file_content: contents, index: 0, line: 1 })
+impl<'a> Parser<'a> {
+    pub fn new(lexer: &'a mut Lexer) -> Self {
+        Self { lexer }
     }
 
-    // Tecnically this is not the most correct thing for UTF-8 strings but it is
-    // fine since the disassembler is part of the program and i control it
-    fn consume(&mut self) -> Option<char> {
-        self.index += 1;
-        self.file_content.chars().nth(self.index - 1)
-    }
+    pub fn parse_next(&mut self) -> Instruction {
+        let tok = self.consume();
 
-    fn peek(&self) -> Option<char> {
-        self.file_content.chars().nth(self.index)
-    }
-
-    pub fn parse(&mut self) -> TokenType {
-        let mut c = self.consume();
-        while let Some(ch) = c && (ch == ' ' || ch == '\t') {
-            c = self.consume();
-        }
-
-        if let Some(c) = c {
-            match c {
-                ',' => TokenType::Comma,
-                ':' => TokenType::SemiColon,
-                '@' => TokenType::Escargot,
-                '#' => self.immediate(),
-                '\n' => {
-                    self.line += 1;
-                    self.parse()
-                }
-                c if c.is_digit(10) => self.address(), 
-                c if c.is_alphabetic() => self.keyword(),
-                _ => unreachable!()
-            }
-        } else {
-            TokenType::End
+        match tok {
+            TokenType::Mov => self.mov(),
+            TokenType::Label(labnum) => self.label(labnum),
+            TokenType::Clr => self.clr(),
+            TokenType::Subb => self.subb(),
+            TokenType::Lcall | TokenType::Ljmp | TokenType::Jnc => self.jump(tok),
+            TokenType::Push | TokenType::Pop => self.pushpop(tok),
+            TokenType::Inc => self.inc(),
+            TokenType::Cjne => self.cjne(),
+            TokenType::Db(data) => Instruction::Db(data),
+            TokenType::Ret => Instruction::Ret,
+            TokenType::End => Instruction::End,
+            _ => todo!(),
         }
     }
 
-    fn keyword(&mut self) -> TokenType {
-        let kyw_start = self.index - 1;
-        while let Some(c) = self.peek() && c.is_alphabetic() { self.consume(); }
-        let kyw_end = self.index;
+    fn consume(&mut self) -> TokenType {
+        self.lexer.next_token()
+    }
 
-        let kyw = self.file_content.get(kyw_start..kyw_end)
-            .expect("Malformed instruction");
+    fn inc(&mut self) -> Instruction {
+        let reg = self.consume();
 
-        match kyw {
-            "MOV" => TokenType::Mov,
-            "A" => TokenType::Acc,
-            "ADD" => TokenType::Add,
-            "MOVX" => TokenType::Movx,
-            "DPTR" => TokenType::Dptr,
-            "ACC" => TokenType::Acc,
-            "INC" => TokenType::Inc,
-            "ADDC" => TokenType::Addc,
-            "SUBB" => TokenType::Subb,
-            "LJMP" => TokenType::Ljmp,
-            "JNC" => TokenType::Jnc,
-            "CLR" => TokenType::Clr,
-            "LCALL" => TokenType::Lcall,
-            "XRL" => TokenType::Xrl,
-            "DPL" => TokenType::Dpl,
-            "DPH" => TokenType::Dph,
-            "RET" => TokenType::Ret,
-            "C" => TokenType::Carry,
-            "DB" => self.data(),
-            "L" => self.label(),
-            "R" => {
-                const MAX_R_REGISTER: u8 = 7;
-                let index = self.consume()
-                    .expect("R registers used without specifying wich one");
+        let op = match reg {
+            TokenType::R(reg) => Operand::R(reg),
+            _ => unreachable!(),
+        };
 
-                let index = index.to_digit(10)
-                    .expect("Malformed use of R registers")
-                    .try_into();
+        Instruction::Inc(op)
+    }
 
-                match index {
-                    Ok(value) => {
-                        assert!(value <= MAX_R_REGISTER);
-                        TokenType::R(value)
-                    } 
-                    Err(e) => unreachable!("{e}")
-                }
-            }
-            "END" => TokenType::End,
-            _ => unreachable!("Unknown keyword: {kyw}"),
+    fn pushpop(&mut self, current_tok: TokenType) -> Instruction {
+        let data = self.consume();
+
+        if let TokenType::Address(addr) = data {
+            return match current_tok {
+                TokenType::Pop => Instruction::Pop(addr),
+                TokenType::Push => Instruction::Push(addr),
+                _ => unreachable!(),
+            };
         }
+
+        unreachable!()
     }
 
-    fn data(&mut self) -> TokenType {
-        let _b = self.consume();
+    fn jump(&mut self, current_tok: TokenType) -> Instruction {
+        let label = self.consume();
 
-        let num_start = self.index; 
-        while let Some(c) = self.peek() && c.is_digit(16) { self.consume(); }
-        let num_end = self.index;
+        if let TokenType::Label(labnum) = label {
+            return match current_tok {
+                TokenType::Ljmp => Instruction::Ljmp(labnum),
+                TokenType::Jnc => Instruction::Jnc(labnum),
+                TokenType::Lcall => Instruction::Lcall(labnum),
+                _ => unreachable!(),
+            };
+        }
 
-        let num = self.file_content.get(num_start..num_end)
-            .expect("Non ASCII number");
-
-        let num: u16 = u16::from_str_radix(num, 16)
-            .expect("Malformed data in Lexer");
-
-        let _h = self.consume();
-        TokenType::Db(num)
+        unreachable!()
     }
 
-    fn label(&mut self) -> TokenType {
-        let num_start = self.index;
-        while let Some(c) = self.peek() && c.is_digit(10) { self.consume(); }
-        let num_end = self.index;
+    fn subb(&mut self) -> Instruction {
+        let op1 = self.consume();
+        assert!(op1 == TokenType::Acc);
 
-        let number = self.file_content.get(num_start..num_end)
-            .expect("Non ASCII number");
+        let _comma = self.consume();
 
-        let number: usize = usize::from_str_radix(number, 10)
-            .expect("Malformed label number in Lexer");
+        let op2 = self.consume();
+        let op2 = match op2 {
+            TokenType::R(reg) => Operand::R(reg),
+            _ => unreachable!(),
+        };
 
-        TokenType::Label(number)
+        Instruction::Subb(Operand::Acc, op2)
     }
 
-    fn immediate(&mut self) -> TokenType {
-        let imm_start = self.index; 
-        while let Some(c) = self.peek() && c.is_digit(16) { self.consume(); }
-        let imm_end = self.index;
+    fn clr(&mut self) -> Instruction {
+        let op = self.consume();
 
-        let _h = self.consume(); // Consume the h at the end
+        let op = match op {
+            TokenType::Carry => Operand::Carry,
+            TokenType::Acc => Operand::Acc,
+            TokenType::Address(addr) => Operand::BitAddress(addr),
+            _ => unreachable!(),
+        };
 
-        let imm = self.file_content.get(imm_start..imm_end)
-            .expect("Non ASCII number");
-
-        let imm: u16 = u16::from_str_radix(imm, 16)
-            .expect("Malformed address number in Lexer");
-
-        TokenType::Immediate(imm)
+        Instruction::Clr(op)
     }
 
-    fn address(&mut self) -> TokenType {
-        let addr_start = self.index - 1; // -1 because I already consumed the first digit
-        while let Some(c) = self.peek() && c.is_digit(16) { self.consume(); }
-        let addr_end = self.index;
+    fn label(&mut self, labnum: usize) -> Instruction {
+        let _semicolon = self.consume();
+        Instruction::Label(labnum)
+    }
 
-        let _h = self.consume(); // Consume the h at the end
+    fn cjne(&mut self) -> Instruction {
+        let op1 = self.consume();
+        let _comma = self.consume();
+        let op2 = self.consume();
+        let _comma = self.consume();
+        let op3 = self.consume();
 
-        let addr = self.file_content.get(addr_start..addr_end)
-            .expect("Non ASCII number");
+        let op1 = match op1 {
+            TokenType::Escargot => todo!(),
+            TokenType::Acc => Operand::Acc,
+            TokenType::R(reg) => Operand::R(reg),
+            _ => unreachable!(),
+        };
 
-        let addr: u16 = u16::from_str_radix(addr, 16)
-            .expect("Malformed address number in Lexer");
+        let op2 = match op2 {
+            TokenType::Address(addr) => Operand::IramAddress(addr),
+            TokenType::Immediate(imm) => Operand::Data8(imm as u8),
+            _ => unreachable!(),
+        };
 
-        TokenType::Address(addr)
+        let label = match op3 {
+            TokenType::Label(labnum) => labnum,
+            _ => unreachable!(),
+        };
+
+        Instruction::Cjne(op1, op2, label)
+    }
+
+    fn mov(&mut self) -> Instruction {
+        let op1 = self.consume();
+        let _comma = self.consume();
+        let op2 = self.consume();
+
+        let op1 = match op1 {
+            TokenType::Escargot => todo!(),
+            TokenType::Acc => Operand::Acc,
+            TokenType::Carry => todo!(),
+            TokenType::Dpl => Operand::Dpl,
+            TokenType::Dph => Operand::Dph,
+            TokenType::Dptr => Operand::Dptr,
+            TokenType::R(reg) => Operand::R(reg),
+            TokenType::Address(addr) => Operand::IramAddress(addr),
+            _ => unreachable!(),
+        };
+
+        let op2 = match op2 {
+            TokenType::Escargot => todo!(),
+            TokenType::Acc => todo!(),
+            TokenType::Carry => todo!(),
+            TokenType::Dpl => todo!(),
+            TokenType::Dph => todo!(),
+            TokenType::R(reg) => Operand::R(reg),
+            TokenType::Address(addr) => Operand::IramAddress(addr),
+            TokenType::Immediate(imm) => match op1 {
+                Operand::Dptr => Operand::Data16(imm),
+                _ => Operand::Data8(imm as u8),
+            },
+            _ => unreachable!(),
+        };
+
+        Instruction::Mov(op1, op2)
     }
 }

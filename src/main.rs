@@ -1,8 +1,12 @@
 #![allow(unused)]
 
-use crate::parser::{Lexer, TokenType};
+use crate::{
+    lexer::{Lexer, TokenType},
+    parser::{Instruction, Parser},
+};
 use std::io;
 
+mod lexer;
 mod parser;
 
 fn main() -> io::Result<()> {
@@ -10,11 +14,12 @@ fn main() -> io::Result<()> {
     let hex_file = &args[1];
 
     let mut lexer = Lexer::new(hex_file)?;
+    let mut parser = Parser::new(&mut lexer);
 
-    let mut token = TokenType::Mov;
-    while token != TokenType::End {
-        token = lexer.parse();
-        println!("{token:?}")
+    let mut instr = Instruction::Nop;
+    while instr != Instruction::End {
+        instr = parser.parse_next();
+        println!("{instr:?}")
     }
 
     Ok(())
