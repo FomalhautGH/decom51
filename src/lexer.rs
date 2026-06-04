@@ -1,36 +1,8 @@
 use std::{
-    fs::File,
-    io::{self, Read},
+    fs::File, io::{self, Read}
 };
 
-#[derive(Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum RRegister {
-    R0 = 0,
-    R1 = 1,
-    R2 = 2,
-    R3 = 3,
-    R4 = 4,
-    R5 = 5,
-    R6 = 6,
-    R7 = 7,
-}
-
-impl From<u32> for RRegister {
-    fn from(value: u32) -> Self {
-        match value {
-            0 => Self::R0,
-            1 => Self::R1,
-            2 => Self::R2,
-            3 => Self::R3,
-            4 => Self::R4,
-            5 => Self::R5,
-            6 => Self::R6,
-            7 => Self::R7,
-            _ => unreachable!("Invalid R register index"),
-        }
-    }
-}
+use crate::common::Register;
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum TokenType {
@@ -56,12 +28,7 @@ pub enum TokenType {
     Cjne,
 
     // Registers
-    Dptr,
-    Carry,
-    Acc,
-    Dpl,
-    Dph,
-    R(RRegister),
+    Reg(Register),
 
     // Numbers
     Address(u8),
@@ -155,15 +122,14 @@ impl Lexer {
 
         match kyw {
             "MOV" => TokenType::Mov,
-            "A" => TokenType::Acc,
+            "A" => TokenType::Reg(Register::A),
             "NOP" => TokenType::Nop,
             "ADD" => TokenType::Add,
             "PUSH" => TokenType::Push,
             "POP" => TokenType::Pop,
             "CJNE" => TokenType::Cjne,
             "MOVX" => TokenType::Movx,
-            "DPTR" => TokenType::Dptr,
-            "ACC" => TokenType::Acc,
+            "DPTR" => TokenType::Reg(Register::DPTR),
             "INC" => TokenType::Inc,
             "ADDC" => TokenType::Addc,
             "SUBB" => TokenType::Subb,
@@ -172,10 +138,10 @@ impl Lexer {
             "CLR" => TokenType::Clr,
             "LCALL" => TokenType::Lcall,
             "XRL" => TokenType::Xrl,
-            "DPL" => TokenType::Dpl,
-            "DPH" => TokenType::Dph,
+            "DPL" => TokenType::Reg(Register::DPL),
+            "DPH" => TokenType::Reg(Register::DPH),
             "RET" => TokenType::Ret,
-            "C" => TokenType::Carry,
+            "C" => TokenType::Reg(Register::C),
             "DB" => self.data(),
             "L" => self.label(),
             "R" => {
@@ -183,12 +149,22 @@ impl Lexer {
                     .consume()
                     .expect("R registers used without specifying wich one");
 
-                let index = index
+                let index: u32 = index
                     .to_digit(10)
                     .expect("Malformed use of R registers")
                     .into();
 
-                TokenType::R(index)
+                match index {
+                    0 => TokenType::Reg(Register::R0),
+                    1 => TokenType::Reg(Register::R1),
+                    2 => TokenType::Reg(Register::R2),
+                    3 => TokenType::Reg(Register::R3),
+                    4 => TokenType::Reg(Register::R4),
+                    5 => TokenType::Reg(Register::R5),
+                    6 => TokenType::Reg(Register::R6),
+                    7 => TokenType::Reg(Register::R7),
+                    _ => unreachable!("Unknown R register: R{index}")
+                }
             }
             "END" => TokenType::End,
             _ => unreachable!("Unknown keyword: {kyw}"),

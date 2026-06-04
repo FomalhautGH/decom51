@@ -1,19 +1,14 @@
 use std::io::SeekFrom;
 
-use crate::lexer::{Lexer, RRegister, TokenType};
+use crate::{common::Register, lexer::{Lexer, TokenType}};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operand {
     Data8(u8),
     Data16(u16),
 
-    Acc,
-    Carry,
-    Dptr,
-    Dpl,
-    Dph,
-    R(RRegister),
-    PtrR(RRegister),
+    Reg(Register),
+    // PtrR(RRegister),
 
     IramAddress(u8),
     BitAddress(u8),
@@ -77,7 +72,14 @@ impl<'a> Parser<'a> {
         let reg = self.consume();
 
         let op = match reg {
-            TokenType::R(reg) => Operand::R(reg),
+            TokenType::Reg(Register::R0) => Operand::Reg(Register::R0),
+            TokenType::Reg(Register::R1) => Operand::Reg(Register::R1),
+            TokenType::Reg(Register::R2) => Operand::Reg(Register::R2),
+            TokenType::Reg(Register::R3) => Operand::Reg(Register::R3),
+            TokenType::Reg(Register::R4) => Operand::Reg(Register::R4),
+            TokenType::Reg(Register::R5) => Operand::Reg(Register::R5),
+            TokenType::Reg(Register::R6) => Operand::Reg(Register::R6),
+            TokenType::Reg(Register::R7) => Operand::Reg(Register::R7),
             _ => unreachable!(),
         };
 
@@ -115,25 +117,32 @@ impl<'a> Parser<'a> {
 
     fn subb(&mut self) -> Instruction {
         let op1 = self.consume();
-        assert!(op1 == TokenType::Acc);
+        assert!(op1 == TokenType::Reg(Register::A));
 
         let _comma = self.consume();
 
         let op2 = self.consume();
         let op2 = match op2 {
-            TokenType::R(reg) => Operand::R(reg),
+            TokenType::Reg(Register::R0) => Operand::Reg(Register::R0),
+            TokenType::Reg(Register::R1) => Operand::Reg(Register::R1),
+            TokenType::Reg(Register::R2) => Operand::Reg(Register::R2),
+            TokenType::Reg(Register::R3) => Operand::Reg(Register::R3),
+            TokenType::Reg(Register::R4) => Operand::Reg(Register::R4),
+            TokenType::Reg(Register::R5) => Operand::Reg(Register::R5),
+            TokenType::Reg(Register::R6) => Operand::Reg(Register::R6),
+            TokenType::Reg(Register::R7) => Operand::Reg(Register::R7),
             _ => unreachable!(),
         };
 
-        Instruction::Subb(Operand::Acc, op2)
+        Instruction::Subb(Operand::Reg(Register::A), op2)
     }
 
     fn clr(&mut self) -> Instruction {
         let op = self.consume();
 
         let op = match op {
-            TokenType::Carry => Operand::Carry,
-            TokenType::Acc => Operand::Acc,
+            TokenType::Reg(Register::C) => Operand::Reg(Register::C),
+            TokenType::Reg(Register::A) => Operand::Reg(Register::A),
             TokenType::Address(addr) => Operand::BitAddress(addr),
             _ => unreachable!(),
         };
@@ -155,8 +164,15 @@ impl<'a> Parser<'a> {
 
         let op1 = match op1 {
             TokenType::Escargot => todo!(),
-            TokenType::Acc => Operand::Acc,
-            TokenType::R(reg) => Operand::R(reg),
+            TokenType::Reg(Register::A) => Operand::Reg(Register::A),
+            TokenType::Reg(Register::R0) => Operand::Reg(Register::R0),
+            TokenType::Reg(Register::R1) => Operand::Reg(Register::R1),
+            TokenType::Reg(Register::R2) => Operand::Reg(Register::R2),
+            TokenType::Reg(Register::R3) => Operand::Reg(Register::R3),
+            TokenType::Reg(Register::R4) => Operand::Reg(Register::R4),
+            TokenType::Reg(Register::R5) => Operand::Reg(Register::R5),
+            TokenType::Reg(Register::R6) => Operand::Reg(Register::R6),
+            TokenType::Reg(Register::R7) => Operand::Reg(Register::R7),
             _ => unreachable!(),
         };
 
@@ -181,26 +197,40 @@ impl<'a> Parser<'a> {
 
         let op1 = match op1 {
             TokenType::Escargot => todo!(),
-            TokenType::Acc => Operand::Acc,
-            TokenType::Carry => todo!(),
-            TokenType::Dpl => Operand::Dpl,
-            TokenType::Dph => Operand::Dph,
-            TokenType::Dptr => Operand::Dptr,
-            TokenType::R(reg) => Operand::R(reg),
+            TokenType::Reg(Register::A) => Operand::Reg(Register::A),
+            TokenType::Reg(Register::C) => todo!(),
+            TokenType::Reg(Register::DPL) => Operand::Reg(Register::DPL),
+            TokenType::Reg(Register::DPH) => Operand::Reg(Register::DPH),
+            TokenType::Reg(Register::DPTR) => Operand::Reg(Register::DPTR),
+            TokenType::Reg(Register::R0) => Operand::Reg(Register::R0),
+            TokenType::Reg(Register::R1) => Operand::Reg(Register::R1),
+            TokenType::Reg(Register::R2) => Operand::Reg(Register::R2),
+            TokenType::Reg(Register::R3) => Operand::Reg(Register::R3),
+            TokenType::Reg(Register::R4) => Operand::Reg(Register::R4),
+            TokenType::Reg(Register::R5) => Operand::Reg(Register::R5),
+            TokenType::Reg(Register::R6) => Operand::Reg(Register::R6),
+            TokenType::Reg(Register::R7) => Operand::Reg(Register::R7),
             TokenType::Address(addr) => Operand::IramAddress(addr),
             _ => unreachable!(),
         };
 
         let op2 = match op2 {
             TokenType::Escargot => todo!(),
-            TokenType::Acc => todo!(),
-            TokenType::Carry => todo!(),
-            TokenType::Dpl => todo!(),
-            TokenType::Dph => todo!(),
-            TokenType::R(reg) => Operand::R(reg),
+            TokenType::Reg(Register::A) => todo!(),
+            TokenType::Reg(Register::C) => todo!(),
+            TokenType::Reg(Register::DPL) => todo!(),
+            TokenType::Reg(Register::DPH) => todo!(),
+            TokenType::Reg(Register::R0) => Operand::Reg(Register::R0),
+            TokenType::Reg(Register::R1) => Operand::Reg(Register::R1),
+            TokenType::Reg(Register::R2) => Operand::Reg(Register::R2),
+            TokenType::Reg(Register::R3) => Operand::Reg(Register::R3),
+            TokenType::Reg(Register::R4) => Operand::Reg(Register::R4),
+            TokenType::Reg(Register::R5) => Operand::Reg(Register::R5),
+            TokenType::Reg(Register::R6) => Operand::Reg(Register::R6),
+            TokenType::Reg(Register::R7) => Operand::Reg(Register::R7),
             TokenType::Address(addr) => Operand::IramAddress(addr),
             TokenType::Immediate(imm) => match op1 {
-                Operand::Dptr => Operand::Data16(imm),
+                Operand::Reg(Register::DPTR) => Operand::Data16(imm),
                 _ => Operand::Data8(imm as u8),
             },
             _ => unreachable!(),

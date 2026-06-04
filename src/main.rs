@@ -1,13 +1,14 @@
 #![allow(unused)]
 
 use crate::{
-    lexer::{Lexer, TokenType},
-    parser::{Instruction, Parser},
+    lexer::{Lexer, TokenType}, lifter::{Ir51, Lifter}, parser::{Instruction, Parser}
 };
 use std::io;
 
+mod common;
 mod lexer;
 mod parser;
+mod lifter;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -15,11 +16,12 @@ fn main() -> io::Result<()> {
 
     let mut lexer = Lexer::new(hex_file)?;
     let mut parser = Parser::new(&mut lexer);
+    let mut lifter = Lifter::new(&mut parser);
 
-    let mut instr = Instruction::Nop;
-    while instr != Instruction::End {
-        instr = parser.parse_next();
-        println!("{instr:?}")
+    let irs = lifter.get_ir_instructions();
+
+    for i in irs.iter() {
+        println!("{i:?}");
     }
 
     Ok(())
