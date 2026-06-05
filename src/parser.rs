@@ -1,6 +1,9 @@
 use std::io::SeekFrom;
 
-use crate::{common::Register, lexer::{Lexer, TokenType}};
+use crate::{
+    common::Register,
+    lexer::{Lexer, TokenType},
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operand {
@@ -9,7 +12,6 @@ pub enum Operand {
 
     Reg(Register),
     // PtrR(RRegister),
-
     IramAddress(u8),
     BitAddress(u8),
 }

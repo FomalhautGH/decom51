@@ -1,14 +1,16 @@
 #![allow(unused)]
 
 use crate::{
-    lexer::{Lexer, TokenType}, lifter::{Ir51, Lifter}, parser::{Instruction, Parser}
+    lexer::{Lexer, TokenType},
+    lifter::{Ir51, Lifter},
+    parser::{Instruction, Parser},
 };
 use std::io;
 
 mod common;
 mod lexer;
-mod parser;
 mod lifter;
+mod parser;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();

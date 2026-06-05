@@ -2,8 +2,8 @@ use core::slice;
 use std::collections::HashMap;
 
 use crate::common::Register;
-use crate::parser::{Instruction, Parser};
 use crate::parser;
+use crate::parser::{Instruction, Parser};
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -32,34 +32,63 @@ pub enum BinOp {
     Gt,
     Le,
     Ge,
-    Ne
+    Ne,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Ir51 {
-    Move { dest: Operand, src: Operand },
-    BinOp { op: BinOp, dest: Operand, lhs: Operand, rhs: Operand },
+pub enum Ir51Type {
+    Move {
+        dest: Operand,
+        src: Operand,
+    },
+    BinOp {
+        op: BinOp,
+        dest: Operand,
+        lhs: Operand,
+        rhs: Operand,
+    },
 
-    Store { space: AddrSpace, ptr: Operand, value: Operand },
-    Load { space: AddrSpace, dest_ptr: Operand },
+    Store {
+        space: AddrSpace,
+        ptr: Operand,
+        value: Operand,
+    },
+    Load {
+        space: AddrSpace,
+        dest_ptr: Operand,
+    },
 
     Jump(usize),
-    BranchIf { cond: Operand, true_jmp: Result<u16, usize>, false_jmp: u16 },
+    BranchIf {
+        cond: Operand,
+        true_jmp: usize,
+        false_jmp: usize,
+    },
     Call(usize),
     Return,
 
     End,
 }
 
+#[derive(Debug)]
+pub struct Ir51 {
+    index: usize,
+    instr: Ir51Type,
+}
+
 pub struct Lifter<'a> {
     parser: &'a mut Parser<'a>,
-    labels_index: HashMap<usize, u16>,
-    index: u16,
+    labels_index: HashMap<usize, usize>,
+    current_index: usize,
 }
 
 impl<'a> Lifter<'a> {
     pub fn new(parser: &'a mut Parser<'a>) -> Self {
-        Self { parser, labels_index: HashMap::new(), index: 1 }
+        Self {
+            parser,
+            labels_index: HashMap::new(),
+            current_index: 1,
+        }
     }
 
     pub fn get_ir_instructions(&mut self) -> Vec<Ir51> {
@@ -67,18 +96,19 @@ impl<'a> Lifter<'a> {
 
         loop {
             let instr = self.parser.parse_next();
-            if instr == Instruction::End { break; }
+            if instr == Instruction::End {
+                break;
+            }
 
-            println!("{}: ", self.index);
+            println!("{}: ", self.current_index);
 
             let irs = match instr {
-                Instruction::Label(label) => { 
-                    self.labels_index.insert(label, self.index);
-                    self.index -= 1;
+                Instruction::Label(label) => {
+                    self.labels_index.insert(label, self.current_index);
                     vec![]
                 }
 
-                Instruction::Lcall(label) => vec![Ir51::Call(label)],
+                Instruction::Lcall(label) => vec![Ir51Type::Call(label)],
 
                 Instruction::Mov(dest, src) => self.mov(dest, src),
                 Instruction::Clr(dest) => self.mov(dest, parser::Operand::Data8(0)),
@@ -90,102 +120,165 @@ impl<'a> Lifter<'a> {
                 Instruction::Push(value) => self.push(value),
                 Instruction::Pop(value) => self.pop(value),
 
-                Instruction::Ret => vec![Ir51::Return],
+                Instruction::Ret => vec![Ir51Type::Return],
                 Instruction::Db(_) => vec![],
 
-                _ => todo!("{instr:?}")
+                _ => todo!("{instr:?}"),
             };
 
             println!("{irs:?}");
 
-            self.index += 1;
-            ir_code.extend(irs);
+            let ir = irs.iter().map(|t| Ir51 {
+                index: self.current_index,
+                instr: *t,
+            });
+            ir_code.extend(ir);
+
+            self.current_index += irs.len();
         }
 
         self.fix_jmps(&mut ir_code);
         ir_code
     }
 
-    fn fix_jmps<'b>(&self, ir_code: &'b mut Vec<Ir51>) -> &'b mut Vec<Ir51> {
+    fn fix_jmps(&self, ir_code: &mut [Ir51]) {
         for ir in ir_code.iter_mut() {
-            if let Ir51::BranchIf { cond, true_jmp, false_jmp } = ir 
-                && let Err(label) = true_jmp {
-                
-                let true_jmp = Ok(self.labels_index.get(label).expect("No label found")).copied();
-                *ir = Ir51::BranchIf { cond: *cond, true_jmp, false_jmp: *false_jmp }
+            match ir.instr {
+                Ir51Type::BranchIf {
+                    cond,
+                    true_jmp,
+                    false_jmp,
+                } => {
+                    let true_jmp = *self.labels_index.get(&true_jmp).expect("Label not found");
+                    ir.instr = Ir51Type::BranchIf {
+                        cond,
+                        true_jmp,
+                        false_jmp,
+                    }
+                }
+                Ir51Type::Jump(label) => {
+                    let jmp = *self.labels_index.get(&label).expect("Label not found");
+                    ir.instr = Ir51Type::Jump(jmp)
+                }
+                _ => {}
             }
+            if let Ir51Type::BranchIf {
+                cond,
+                true_jmp,
+                false_jmp,
+            } = ir.instr
+            {}
         }
-
-        ir_code
     }
 
-    fn push(&mut self, value: u8) -> Vec<Ir51> {
+    fn push(&mut self, value: u8) -> Vec<Ir51Type> {
         vec![
-            Ir51::Store { space: AddrSpace::iData, ptr: Operand::Register(Register::SP), value: Operand::Costant(value.into()) },
-            Ir51::BinOp { op: BinOp::Sub, dest: Operand::Register(Register::SP), lhs: Operand::Register(Register::SP), rhs: Operand::Costant(1) }
+            Ir51Type::Store {
+                space: AddrSpace::iData,
+                ptr: Operand::Register(Register::SP),
+                value: Operand::Costant(value.into()),
+            },
+            Ir51Type::BinOp {
+                op: BinOp::Sub,
+                dest: Operand::Register(Register::SP),
+                lhs: Operand::Register(Register::SP),
+                rhs: Operand::Costant(1),
+            },
         ]
     }
 
-    fn pop(&mut self, value: u8) -> Vec<Ir51> {
+    fn pop(&mut self, value: u8) -> Vec<Ir51Type> {
         vec![
-            Ir51::Load { space: AddrSpace::iData, dest_ptr: Operand::Register(Register::SP) },
-            Ir51::BinOp { op: BinOp::Add, dest: Operand::Register(Register::SP), lhs: Operand::Register(Register::SP), rhs: Operand::Costant(1) }
+            Ir51Type::Load {
+                space: AddrSpace::iData,
+                dest_ptr: Operand::Register(Register::SP),
+            },
+            Ir51Type::BinOp {
+                op: BinOp::Add,
+                dest: Operand::Register(Register::SP),
+                lhs: Operand::Register(Register::SP),
+                rhs: Operand::Costant(1),
+            },
         ]
     }
 
-    fn jump(&mut self, label: usize) -> Vec<Ir51> {
-        vec![Ir51::Jump(label)]
+    fn jump(&mut self, label: usize) -> Vec<Ir51Type> {
+        vec![Ir51Type::Jump(label)]
     }
 
-    fn increment(&mut self, dest: parser::Operand) -> Vec<Ir51> {
+    fn increment(&mut self, dest: parser::Operand) -> Vec<Ir51Type> {
         let dest: Operand = match dest {
             parser::Operand::Reg(reg) => Operand::Register(reg),
-            _ => todo!("{dest:?}")
+            _ => todo!("{dest:?}"),
         };
 
-        vec![Ir51::BinOp { op: BinOp::Add, dest: dest.clone(), lhs: dest, rhs: Operand::Costant(1) }]
+        vec![Ir51Type::BinOp {
+            op: BinOp::Add,
+            dest,
+            lhs: dest,
+            rhs: Operand::Costant(1),
+        }]
     }
 
-    fn subb(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51> {
+    fn subb(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51Type> {
         let dest: Operand = match dest {
             parser::Operand::Reg(reg) => Operand::Register(reg),
-            _ => todo!("{dest:?}")
+            _ => todo!("{dest:?}"),
         };
 
         let op: Operand = match src {
             parser::Operand::Reg(reg) => Operand::Register(reg),
-            _ => todo!("{src:?}")
+            _ => todo!("{src:?}"),
         };
 
-        vec![Ir51::BinOp { op: BinOp::Sub, dest: dest.clone(), lhs: dest, rhs: op }]
+        vec![Ir51Type::BinOp {
+            op: BinOp::Sub,
+            dest,
+            lhs: dest,
+            rhs: op,
+        }]
     }
 
-    fn cjne(&mut self, lhs: parser::Operand, rhs: parser::Operand, label: usize) -> Vec<Ir51> {
+    fn cjne(&mut self, lhs: parser::Operand, rhs: parser::Operand, label: usize) -> Vec<Ir51Type> {
         let lhs: Operand = match lhs {
             parser::Operand::Reg(reg) => Operand::Register(reg),
-            _ => todo!("{lhs:?}")
+            _ => todo!("{lhs:?}"),
         };
 
         let rhs: Operand = match rhs {
             parser::Operand::Data8(imm8) => Operand::Costant(imm8.into()),
-            _ => todo!("{rhs:?}")
+            _ => todo!("{rhs:?}"),
         };
 
-        let true_jmp = Err(label);
-        let false_jmp = self.index + 1;
+        let true_jmp = label;
+        let false_jmp = self.current_index + 3; // cuz cjne is equivalent to 3 ir instuctions
 
         vec![
-            Ir51::BinOp { op: BinOp::Ne, dest: Operand::Temporary(0), lhs, rhs },
-            Ir51::BinOp { op: BinOp::Lt, dest: Operand::Register(Register::C), lhs, rhs },
-            Ir51::BranchIf { cond: Operand::Temporary(0), true_jmp, false_jmp }
+            Ir51Type::BinOp {
+                op: BinOp::Ne,
+                dest: Operand::Temporary(0),
+                lhs,
+                rhs,
+            },
+            Ir51Type::BinOp {
+                op: BinOp::Lt,
+                dest: Operand::Register(Register::C),
+                lhs,
+                rhs,
+            },
+            Ir51Type::BranchIf {
+                cond: Operand::Temporary(0),
+                true_jmp,
+                false_jmp,
+            },
         ]
     }
 
-    fn mov(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51> {
+    fn mov(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51Type> {
         let dest: Operand = match dest {
             parser::Operand::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
             parser::Operand::Reg(reg) => Operand::Register(reg),
-            _ => todo!("{dest:?}")
+            _ => todo!("{dest:?}"),
         };
 
         let src: Operand = match src {
@@ -193,9 +286,9 @@ impl<'a> Lifter<'a> {
             parser::Operand::Data16(imm16) => Operand::Costant(imm16),
             parser::Operand::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
             parser::Operand::Reg(reg) => Operand::Register(reg),
-            _ => todo!("{src:?}")
+            _ => todo!("{src:?}"),
         };
 
-        vec![Ir51::Move { dest, src }]
+        vec![Ir51Type::Move { dest, src }]
     }
 }

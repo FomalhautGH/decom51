@@ -1,5 +1,6 @@
 use std::{
-    fs::File, io::{self, Read}
+    fs::File,
+    io::{self, Read},
 };
 
 use crate::common::Register;
@@ -75,11 +76,15 @@ impl Lexer {
 
     pub fn next_token(&mut self) -> TokenType {
         let mut current_char = self.consume();
-        while let Some(cc) = current_char && (cc == ' ' || cc == '\t') {
+        while let Some(cc) = current_char
+            && (cc == ' ' || cc == '\t')
+        {
             current_char = self.consume();
         }
 
-        if let Some(ch) = current_char && ch == ';' {
+        if let Some(ch) = current_char
+            && ch == ';'
+        {
             while let Some(cc) = current_char
                 && cc != '\n'
             {
@@ -110,7 +115,9 @@ impl Lexer {
 
     fn keyword(&mut self) -> TokenType {
         let kyw_start = self.index - 1;
-        while let Some(c) = self.peek() && c.is_alphabetic() {
+        while let Some(c) = self.peek()
+            && c.is_alphabetic()
+        {
             self.consume();
         }
         let kyw_end = self.index;
@@ -149,10 +156,7 @@ impl Lexer {
                     .consume()
                     .expect("R registers used without specifying wich one");
 
-                let index: u32 = index
-                    .to_digit(10)
-                    .expect("Malformed use of R registers")
-                    .into();
+                let index: u32 = index.to_digit(10).expect("Malformed use of R registers");
 
                 match index {
                     0 => TokenType::Reg(Register::R0),
@@ -163,7 +167,7 @@ impl Lexer {
                     5 => TokenType::Reg(Register::R5),
                     6 => TokenType::Reg(Register::R6),
                     7 => TokenType::Reg(Register::R7),
-                    _ => unreachable!("Unknown R register: R{index}")
+                    _ => unreachable!("Unknown R register: R{index}"),
                 }
             }
             "END" => TokenType::End,
@@ -175,7 +179,9 @@ impl Lexer {
         let _b = self.consume();
 
         let num_start = self.index;
-        while let Some(c) = self.peek() && c.is_ascii_hexdigit() {
+        while let Some(c) = self.peek()
+            && c.is_ascii_hexdigit()
+        {
             self.consume();
         }
         let num_end = self.index;
@@ -193,7 +199,9 @@ impl Lexer {
 
     fn label(&mut self) -> TokenType {
         let num_start = self.index;
-        while let Some(c) = self.peek() && c.is_ascii_digit() {
+        while let Some(c) = self.peek()
+            && c.is_ascii_digit()
+        {
             self.consume();
         }
         let num_end = self.index;
@@ -212,7 +220,9 @@ impl Lexer {
 
     fn immediate(&mut self) -> TokenType {
         let imm_start = self.index;
-        while let Some(c) = self.peek() && c.is_ascii_hexdigit() {
+        while let Some(c) = self.peek()
+            && c.is_ascii_hexdigit()
+        {
             self.consume();
         }
         let imm_end = self.index;
@@ -231,7 +241,9 @@ impl Lexer {
 
     fn address(&mut self) -> TokenType {
         let addr_start = self.index - 1; // -1 because I already consumed the first digit
-        while let Some(c) = self.peek() && c.is_ascii_hexdigit() {
+        while let Some(c) = self.peek()
+            && c.is_ascii_hexdigit()
+        {
             self.consume();
         }
         let addr_end = self.index;
