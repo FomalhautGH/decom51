@@ -28,6 +28,7 @@ pub enum Operand {
 pub enum BinOp {
     Add,
     Sub,
+    Eq,
     Lt,
     Gt,
     Le,
@@ -70,10 +71,10 @@ pub enum Ir51Type {
     End,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Ir51 {
-    index: usize,
-    instr: Ir51Type,
+    pub index: usize,
+    pub instr: Ir51Type,
 }
 
 pub struct Lifter<'a> {
@@ -100,8 +101,6 @@ impl<'a> Lifter<'a> {
                 break;
             }
 
-            println!("{}: ", self.current_index);
-
             let irs = match instr {
                 Instruction::Label(label) => {
                     self.labels_index.insert(label, self.current_index);
@@ -115,7 +114,8 @@ impl<'a> Lifter<'a> {
                 Instruction::Inc(dest) => self.increment(dest),
 
                 Instruction::Subb(dest, op) => self.subb(dest, op),
-                Instruction::Jnc(label) | Instruction::Ljmp(label) => self.jump(label),
+                Instruction::Jnc(label) => self.jnc(label),
+                Instruction::Ljmp(label) => self.jump(label),
                 Instruction::Cjne(lhs, rhs, label) => self.cjne(lhs, rhs, label),
                 Instruction::Push(value) => self.push(value),
                 Instruction::Pop(value) => self.pop(value),
@@ -125,8 +125,6 @@ impl<'a> Lifter<'a> {
 
                 _ => todo!("{instr:?}"),
             };
-
-            println!("{irs:?}");
 
             let ir = irs.iter().map(|t| Ir51 {
                 index: self.current_index,
@@ -169,6 +167,25 @@ impl<'a> Lifter<'a> {
             } = ir.instr
             {}
         }
+    }
+
+    fn jnc(&mut self, label: usize) -> Vec<Ir51Type> {
+        let true_jmp = label;
+        let false_jmp = self.current_index + 2;
+
+        vec![
+            Ir51Type::BinOp {
+                op: BinOp::Eq,
+                dest: Operand::Temporary(0),
+                lhs: Operand::Register(Register::C),
+                rhs: Operand::Costant(0),
+            },
+            Ir51Type::BranchIf {
+                cond: Operand::Temporary(0),
+                true_jmp,
+                false_jmp,
+            },
+        ]
     }
 
     fn push(&mut self, value: u8) -> Vec<Ir51Type> {
