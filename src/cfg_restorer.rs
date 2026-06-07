@@ -1,8 +1,9 @@
-use crate::lifter::{Ir51, Ir51Type};
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
 };
+
+use crate::common::{Ir51, Ir51Type};
 
 type BlockId = usize;
 
@@ -31,11 +32,13 @@ impl CFGRestorer {
         CFGRestorer::fill_successors(&mut blocks);
         CFGRestorer::fill_predecessors(&mut blocks);
 
+        println!("{blocks:#?}");
         let blocks = blocks.into_iter().map(|b| (b.id, b)).collect();
 
         ControlFlowGraph {
             blocks,
-            start_block: 0,
+            start_block: 0, // TODO: to change in the future cuz the main doesn't always start at
+                            // block 0
         }
     }
 
