@@ -1,5 +1,3 @@
-use std::io::SeekFrom;
-
 use crate::{
     common::Register,
     lexer::{Lexer, TokenType},

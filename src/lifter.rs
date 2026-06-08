@@ -1,4 +1,3 @@
-use core::slice;
 use std::collections::HashMap;
 
 use crate::common::{AddrSpace, BinOp, Ir51, Operand, Register};
@@ -205,7 +204,7 @@ impl<'a> Lifter<'a> {
         vec![
             Ir51::Load {
                 space: AddrSpace::iData,
-                dest_ptr: Operand::Register(Register::SP),
+                dest_ptr: Operand::Address(value.into(), AddrSpace::iData),
             },
             Ir51::BinOp {
                 op: BinOp::Add,

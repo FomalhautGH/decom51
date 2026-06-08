@@ -119,7 +119,7 @@ impl CFGRestorer {
         let last_leader = leaders.last().unwrap_or(&0);
 
         // All remaining irs go to the last block
-        let mut last_block = BasicBlock {
+        let last_block = BasicBlock {
             id: leaders.len() - 1,
             ir_range: *last_leader..ir_code.len(),
             successors: Vec::new(),

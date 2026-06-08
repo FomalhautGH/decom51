@@ -2,10 +2,10 @@
 
 use crate::{
     cfg_restorer::CFGRestorer,
-    lexer::{Lexer, TokenType},
+    lexer::{Lexer},
     lifter::Lifter,
     mem_normalizer::MemNormalizer,
-    parser::{Instruction, Parser},
+    parser::{Parser},
 };
 use std::io;
 
