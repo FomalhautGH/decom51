@@ -1,47 +1,47 @@
-use crate::common::{AddrSpace, Ir51, Ir51Type, Operand, Register};
+use crate::common::{AddrSpace, Ir51, Operand, Register};
 pub struct MemNormalizer;
 
 impl MemNormalizer {
     pub fn normalize(ir_code: &mut [Ir51]) {
         for ir in ir_code {
-            let newir = match ir.instr {
-                Ir51Type::Move { dest, src } => Ir51Type::Move {
+            let newir = match *ir {
+                Ir51::Move { dest, src } => Ir51::Move {
                     dest: MemNormalizer::opreg_to_opaddress(dest),
                     src: MemNormalizer::opreg_to_opaddress(src),
                 },
 
-                Ir51Type::Store { space, ptr, value } => Ir51Type::Store {
+                Ir51::Store { space, ptr, value } => Ir51::Store {
                     space,
                     ptr: MemNormalizer::opreg_to_opaddress(ptr),
                     value: MemNormalizer::opreg_to_opaddress(value),
                 },
 
-                Ir51Type::Load { space, dest_ptr } => Ir51Type::Load {
+                Ir51::Load { space, dest_ptr } => Ir51::Load {
                     space,
                     dest_ptr: MemNormalizer::opreg_to_opaddress(dest_ptr),
                 },
 
-                Ir51Type::BranchIf {
+                Ir51::BranchIf {
                     cond,
                     true_jmp,
                     false_jmp,
-                } => Ir51Type::BranchIf {
+                } => Ir51::BranchIf {
                     cond: MemNormalizer::opreg_to_opaddress(cond),
                     true_jmp,
                     false_jmp,
                 },
 
-                Ir51Type::BinOp { op, dest, lhs, rhs } => Ir51Type::BinOp {
+                Ir51::BinOp { op, dest, lhs, rhs } => Ir51::BinOp {
                     op,
                     dest: MemNormalizer::opreg_to_opaddress(dest),
                     lhs: MemNormalizer::opreg_to_opaddress(lhs),
                     rhs: MemNormalizer::opreg_to_opaddress(rhs),
                 },
 
-                _ => ir.instr,
+                _ => *ir,
             };
 
-            ir.instr = newir
+            *ir = newir
         }
     }
 

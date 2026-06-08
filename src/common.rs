@@ -65,7 +65,7 @@ pub enum BinOp {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Ir51Type {
+pub enum Ir51 {
     Move {
         dest: Operand,
         src: Operand,
@@ -88,19 +88,15 @@ pub enum Ir51Type {
     },
 
     Jump(usize),
+
     BranchIf {
         cond: Operand,
         true_jmp: usize,
         false_jmp: usize,
     },
+
     Call(usize),
+
     Return,
-
-    End,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Ir51 {
-    pub index: usize,
-    pub instr: Ir51Type,
+    InvalidIr,
 }

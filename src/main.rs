@@ -3,7 +3,7 @@
 use crate::{
     cfg_restorer::CFGRestorer,
     lexer::{Lexer, TokenType},
-    lifter::{Lifter},
+    lifter::Lifter,
     mem_normalizer::MemNormalizer,
     parser::{Instruction, Parser},
 };
@@ -24,12 +24,15 @@ fn main() -> io::Result<()> {
     let mut parser = Parser::new(&mut lexer);
 
     let mut lifter = Lifter::new(&mut parser);
-    let mut irs = lifter.get_ir_instructions();
+    let mut ir_code = lifter.get_ir_instructions();
 
-    MemNormalizer::normalize(&mut irs);
-    let graph = CFGRestorer::restore_raw_cfg(&irs);
+    MemNormalizer::normalize(&mut ir_code);
 
-    println!("{graph:?}");
+    for (i, ir) in ir_code.iter().enumerate() {
+        println!("{i}: {ir:?}")
+    }
+
+    let graph = CFGRestorer::restore_raw_cfg(&ir_code);
 
     Ok(())
 }

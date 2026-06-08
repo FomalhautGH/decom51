@@ -1,7 +1,7 @@
 use core::slice;
 use std::collections::HashMap;
 
-use crate::common::{AddrSpace, BinOp, Ir51, Ir51Type, Operand, Register};
+use crate::common::{AddrSpace, BinOp, Ir51, Operand, Register};
 use crate::parser;
 use crate::parser::{Instruction, Parser};
 
@@ -16,7 +16,7 @@ impl<'a> Lifter<'a> {
         Self {
             parser,
             labels_index: HashMap::new(),
-            current_index: 1,
+            current_index: 0,
         }
     }
 
@@ -29,86 +29,155 @@ impl<'a> Lifter<'a> {
                 break;
             }
 
-            let irs = match instr {
-                Instruction::Label(label) => {
-                    self.labels_index.insert(label, self.current_index);
-                    vec![]
-                }
-
-                Instruction::Lcall(label) => vec![Ir51Type::Call(label)],
-
-                Instruction::Mov(dest, src) => self.mov(dest, src),
-                Instruction::Clr(dest) => self.mov(dest, parser::Operand::Data8(0)),
-                Instruction::Inc(dest) => self.increment(dest),
-
-                Instruction::Subb(dest, op) => self.subb(dest, op),
-                Instruction::Jnc(label) => self.jnc(label),
-                Instruction::Ljmp(label) => self.jump(label),
-                Instruction::Cjne(lhs, rhs, label) => self.cjne(lhs, rhs, label),
-                Instruction::Push(value) => self.push(value),
-                Instruction::Pop(value) => self.pop(value),
-
-                Instruction::Ret => vec![Ir51Type::Return],
-                Instruction::Db(_) => vec![],
-
-                _ => todo!("{instr:?}"),
-            };
-
-            let ir = irs.iter().map(|t| Ir51 {
-                index: self.current_index,
-                instr: *t,
-            });
-            ir_code.extend(ir);
-
+            let irs = self.get_ir_from_instruction(instr);
             self.current_index += irs.len();
+
+            ir_code.extend(irs);
         }
 
         self.fix_jmps(&mut ir_code);
+        self.edge_contraction(&mut ir_code);
+
         ir_code
     }
 
     fn fix_jmps(&self, ir_code: &mut [Ir51]) {
         for ir in ir_code.iter_mut() {
-            match ir.instr {
-                Ir51Type::BranchIf {
+            let new_ir = match ir {
+                Ir51::BranchIf {
                     cond,
                     true_jmp,
                     false_jmp,
-                } => {
-                    let true_jmp = *self.labels_index.get(&true_jmp).expect("Label not found");
-                    ir.instr = Ir51Type::BranchIf {
-                        cond,
-                        true_jmp,
-                        false_jmp,
-                    }
+                } => Ir51::BranchIf {
+                    cond: *cond,
+                    true_jmp: *self.labels_index.get(true_jmp).expect("Label not found"),
+                    false_jmp: *false_jmp,
+                },
+
+                Ir51::Jump(label) => {
+                    Ir51::Jump(*self.labels_index.get(label).expect("Label not found"))
                 }
-                Ir51Type::Jump(label) => {
-                    let jmp = *self.labels_index.get(&label).expect("Label not found");
-                    ir.instr = Ir51Type::Jump(jmp)
-                }
-                _ => {}
-            }
-            if let Ir51Type::BranchIf {
-                cond,
-                true_jmp,
-                false_jmp,
-            } = ir.instr
-            {}
+
+                _ => *ir,
+            };
+
+            *ir = new_ir;
         }
     }
 
-    fn jnc(&mut self, label: usize) -> Vec<Ir51Type> {
+    fn edge_contraction(&mut self, ir_code: &mut Vec<Ir51>) {
+        for i in 0..ir_code.len() {
+            let mut ir = ir_code[i];
+
+            // TODO: always check for other instructions like these
+            match &mut ir {
+                Ir51::BranchIf {
+                    true_jmp,
+                    false_jmp,
+                    ..
+                } => {
+                    *true_jmp = Lifter::is_single_ljmp(*true_jmp, ir_code).unwrap_or(*true_jmp);
+                    *false_jmp = Lifter::is_single_ljmp(*false_jmp, ir_code).unwrap_or(*false_jmp);
+                }
+
+                Ir51::Jump(label) => {
+                    *label = Lifter::is_single_ljmp(*label, ir_code).unwrap_or(*label);
+                }
+
+                _ => continue,
+            }
+
+            ir_code[i] = ir;
+        }
+
+        self.shift_jumps(ir_code);
+    }
+
+    fn shift_jumps(&mut self, ir_code: &mut Vec<Ir51>) {
+        let mut index_map = HashMap::new();
+        let mut real_index = 0;
+
+        // We track the shifted indices before retaining
+        for (i, ir) in ir_code.iter().enumerate() {
+            if !matches!(ir, Ir51::InvalidIr) {
+                index_map.insert(i, real_index);
+                real_index += 1;
+            }
+        }
+
+        // Retain
+        ir_code.retain(|ir| !matches!(ir, Ir51::InvalidIr));
+
+        // Pathing
+        for ir in ir_code {
+            match ir {
+                Ir51::BranchIf {
+                    true_jmp,
+                    false_jmp,
+                    ..
+                } => {
+                    *true_jmp = index_map[true_jmp];
+                    *false_jmp = index_map[false_jmp];
+                }
+
+                Ir51::Jump(label) => {
+                    *label = index_map[label];
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn is_single_ljmp(jmp_index: usize, ir_code: &mut [Ir51]) -> Option<usize> {
+        let ir = ir_code.get_mut(jmp_index)?;
+
+        if let Ir51::Jump(jmp) = *ir {
+            *ir = Ir51::InvalidIr;
+            Some(jmp)
+        } else {
+            None
+        }
+    }
+
+    fn get_ir_from_instruction(&mut self, instr: Instruction) -> Vec<Ir51> {
+        match instr {
+            Instruction::Label(label) => {
+                self.labels_index.insert(label, self.current_index);
+                vec![]
+            }
+
+            Instruction::Lcall(label) => vec![Ir51::Call(label)],
+
+            Instruction::Mov(dest, src) => self.mov(dest, src),
+            Instruction::Clr(dest) => self.mov(dest, parser::Operand::Data8(0)),
+            Instruction::Inc(dest) => self.increment(dest),
+
+            Instruction::Subb(dest, op) => self.subb(dest, op),
+            Instruction::Jnc(label) => self.jnc(label),
+            Instruction::Ljmp(label) => self.jump(label),
+            Instruction::Cjne(lhs, rhs, label) => self.cjne(lhs, rhs, label),
+            Instruction::Push(value) => self.push(value),
+            Instruction::Pop(value) => self.pop(value),
+
+            Instruction::Ret => vec![Ir51::Return],
+            Instruction::Db(_) => vec![],
+
+            _ => todo!("{instr:?}"),
+        }
+    }
+
+    fn jnc(&mut self, label: usize) -> Vec<Ir51> {
         let true_jmp = label;
         let false_jmp = self.current_index + 2;
 
         vec![
-            Ir51Type::BinOp {
+            Ir51::BinOp {
                 op: BinOp::Eq,
                 dest: Operand::Temporary(0),
                 lhs: Operand::Register(Register::C),
                 rhs: Operand::Costant(0),
             },
-            Ir51Type::BranchIf {
+            Ir51::BranchIf {
                 cond: Operand::Temporary(0),
                 true_jmp,
                 false_jmp,
@@ -116,14 +185,14 @@ impl<'a> Lifter<'a> {
         ]
     }
 
-    fn push(&mut self, value: u8) -> Vec<Ir51Type> {
+    fn push(&mut self, value: u8) -> Vec<Ir51> {
         vec![
-            Ir51Type::Store {
+            Ir51::Store {
                 space: AddrSpace::iData,
                 ptr: Operand::Register(Register::SP),
                 value: Operand::Costant(value.into()),
             },
-            Ir51Type::BinOp {
+            Ir51::BinOp {
                 op: BinOp::Sub,
                 dest: Operand::Register(Register::SP),
                 lhs: Operand::Register(Register::SP),
@@ -132,13 +201,13 @@ impl<'a> Lifter<'a> {
         ]
     }
 
-    fn pop(&mut self, value: u8) -> Vec<Ir51Type> {
+    fn pop(&mut self, value: u8) -> Vec<Ir51> {
         vec![
-            Ir51Type::Load {
+            Ir51::Load {
                 space: AddrSpace::iData,
                 dest_ptr: Operand::Register(Register::SP),
             },
-            Ir51Type::BinOp {
+            Ir51::BinOp {
                 op: BinOp::Add,
                 dest: Operand::Register(Register::SP),
                 lhs: Operand::Register(Register::SP),
@@ -147,17 +216,17 @@ impl<'a> Lifter<'a> {
         ]
     }
 
-    fn jump(&mut self, label: usize) -> Vec<Ir51Type> {
-        vec![Ir51Type::Jump(label)]
+    fn jump(&mut self, label: usize) -> Vec<Ir51> {
+        vec![Ir51::Jump(label)]
     }
 
-    fn increment(&mut self, dest: parser::Operand) -> Vec<Ir51Type> {
+    fn increment(&mut self, dest: parser::Operand) -> Vec<Ir51> {
         let dest: Operand = match dest {
             parser::Operand::Reg(reg) => Operand::Register(reg),
             _ => todo!("{dest:?}"),
         };
 
-        vec![Ir51Type::BinOp {
+        vec![Ir51::BinOp {
             op: BinOp::Add,
             dest,
             lhs: dest,
@@ -165,7 +234,7 @@ impl<'a> Lifter<'a> {
         }]
     }
 
-    fn subb(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51Type> {
+    fn subb(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51> {
         let dest: Operand = match dest {
             parser::Operand::Reg(reg) => Operand::Register(reg),
             _ => todo!("{dest:?}"),
@@ -176,7 +245,7 @@ impl<'a> Lifter<'a> {
             _ => todo!("{src:?}"),
         };
 
-        vec![Ir51Type::BinOp {
+        vec![Ir51::BinOp {
             op: BinOp::Sub,
             dest,
             lhs: dest,
@@ -184,7 +253,7 @@ impl<'a> Lifter<'a> {
         }]
     }
 
-    fn cjne(&mut self, lhs: parser::Operand, rhs: parser::Operand, label: usize) -> Vec<Ir51Type> {
+    fn cjne(&mut self, lhs: parser::Operand, rhs: parser::Operand, label: usize) -> Vec<Ir51> {
         let lhs: Operand = match lhs {
             parser::Operand::Reg(reg) => Operand::Register(reg),
             _ => todo!("{lhs:?}"),
@@ -199,19 +268,19 @@ impl<'a> Lifter<'a> {
         let false_jmp = self.current_index + 3; // cuz cjne is equivalent to 3 ir instuctions
 
         vec![
-            Ir51Type::BinOp {
+            Ir51::BinOp {
                 op: BinOp::Ne,
                 dest: Operand::Temporary(0),
                 lhs,
                 rhs,
             },
-            Ir51Type::BinOp {
+            Ir51::BinOp {
                 op: BinOp::Lt,
                 dest: Operand::Register(Register::C),
                 lhs,
                 rhs,
             },
-            Ir51Type::BranchIf {
+            Ir51::BranchIf {
                 cond: Operand::Temporary(0),
                 true_jmp,
                 false_jmp,
@@ -219,7 +288,7 @@ impl<'a> Lifter<'a> {
         ]
     }
 
-    fn mov(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51Type> {
+    fn mov(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51> {
         let dest: Operand = match dest {
             parser::Operand::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
             parser::Operand::Reg(reg) => Operand::Register(reg),
@@ -234,6 +303,6 @@ impl<'a> Lifter<'a> {
             _ => todo!("{src:?}"),
         };
 
-        vec![Ir51Type::Move { dest, src }]
+        vec![Ir51::Move { dest, src }]
     }
 }
