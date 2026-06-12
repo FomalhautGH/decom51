@@ -2,10 +2,11 @@
 
 use crate::{
     cfg_restorer::CFGRestorer,
-    lexer::{Lexer},
+    lexer::Lexer,
     lifter::Lifter,
     mem_normalizer::MemNormalizer,
-    parser::{Parser},
+    parser::Parser,
+    ssa::StaticSingleAssignment,
 };
 use std::io;
 
@@ -15,6 +16,7 @@ mod lexer;
 mod lifter;
 mod mem_normalizer;
 mod parser;
+mod ssa;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -32,7 +34,8 @@ fn main() -> io::Result<()> {
         println!("{i}: {ir:?}")
     }
 
-    let graph = CFGRestorer::restore_raw_cfg(&ir_code);
+    let mut graph = CFGRestorer::restore_raw_cfg(&ir_code);
+    StaticSingleAssignment::ssa(&mut graph, &mut ir_code);
 
     Ok(())
 }

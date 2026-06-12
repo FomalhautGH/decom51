@@ -4,9 +4,15 @@ use std::{
     ops::Range,
 };
 
-use crate::common::Ir51;
+use crate::common::{Ir51, Operand};
 
 type BlockId = usize;
+
+#[derive(Debug)]
+pub struct Phi {
+    pub operand: Operand,
+    pub incoming: HashMap<usize, usize>,
+}
 
 #[derive(Debug)]
 pub struct BasicBlock {
@@ -14,6 +20,7 @@ pub struct BasicBlock {
     pub ir_range: Range<usize>,
     pub successors: Vec<BlockId>,
     pub predecessors: Vec<BlockId>,
+    pub phis: Vec<Phi>,
 }
 
 #[derive(Debug)]
@@ -113,6 +120,7 @@ impl CFGRestorer {
                 ir_range: start..end,
                 successors: Vec::new(),
                 predecessors: Vec::new(),
+                phis: Vec::new(),
             });
         }
 
@@ -124,6 +132,7 @@ impl CFGRestorer {
             ir_range: *last_leader..ir_code.len(),
             successors: Vec::new(),
             predecessors: Vec::new(),
+            phis: Vec::new(),
         };
 
         blocks.push(last_block);

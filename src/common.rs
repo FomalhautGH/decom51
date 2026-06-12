@@ -50,6 +50,7 @@ pub enum Operand {
     Address(u16, AddrSpace),
     Temporary(usize),
     Costant(u16),
+    SSAVar { id: usize, version: usize },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
