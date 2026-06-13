@@ -1,21 +1,123 @@
 use crate::{
-    cfg_restorer::{BasicBlock, ControlFlowGraph},
-    common::Ir51,
+    cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, Phi},
+    common::{AddrSpace, Ir51, Operand},
 };
 use std::collections::{HashMap, HashSet};
 
-pub struct StaticSingleAssignment;
+pub struct SSABuilder;
 
-impl StaticSingleAssignment {
-    pub fn ssa(cfg: &mut ControlFlowGraph, ir: &mut [Ir51]) {
-        let mut blocks: Vec<&mut BasicBlock> = cfg.blocks.values_mut().collect();
+impl SSABuilder {
+    pub fn build(cfg: &mut ControlFlowGraph, ir: &mut [Ir51]) {
+        let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+        let idoms = SSABuilder::calculate_idoms(&shared_blocks);
+        let dom_frontiers = SSABuilder::calculate_frontiers(&idoms, &shared_blocks);
+        let variables = SSABuilder::find_variables(&shared_blocks, ir);
 
-        let shared_blocks: Vec<&BasicBlock> = blocks.iter().map(|b| &**b).collect();
-        let idoms = StaticSingleAssignment::calculate_idoms(&shared_blocks);
-        let dom_frontiers = StaticSingleAssignment::calculate_frontiers(&idoms, &shared_blocks);
+        SSABuilder::insert_phis(&mut cfg.blocks, &dom_frontiers, &variables);
 
-        println!("{idoms:?}");
+        // for (i, ir) in ir.iter().enumerate() {
+        //     println!("{i}: {ir:?}")
+        // }
+
+        // println!("{idoms:?}");
+        println!("{:#?}", cfg.blocks);
+        println!("{variables:?}");
         println!("{dom_frontiers:?}");
+    }
+
+    fn insert_phis(
+        blocks: &mut HashMap<BlockId, BasicBlock>,
+        frontiers: &HashMap<usize, HashSet<usize>>,
+        variables: &HashMap<u16, HashSet<usize>>,
+    ) {
+        for (var, worklist) in variables {
+            let mut worklist: Vec<usize> = worklist.iter().copied().collect();
+            while let Some(block_id) = worklist.pop() {
+                let block_frontiers = &frontiers[&block_id];
+                for frontier in block_frontiers {
+                    let frontier_block = blocks
+                        .get_mut(frontier)
+                        .expect("No frontier for this block");
+
+                    // TODO: Dont hardcode iData cuz variables could be from different RAMs
+                    if frontier_block.phis.iter().any(|e| {
+                        matches!(e, Phi { operand: Operand::Address(v, AddrSpace::iData), .. } if *v == *var)
+                    }) {
+                        continue;
+                    }
+
+                    frontier_block.phis.push(Phi {
+                        operand: Operand::Address(*var, AddrSpace::iData),
+                        incoming: HashMap::new(),
+                    });
+
+                    worklist.push(*frontier);
+                }
+            }
+        }
+    }
+
+    // TODO: To get a better version of this is to find where a variabile is read in order to avoid
+    // placing a phi if a variable is not read in the frontiers
+    fn find_variables(blocks: &[&BasicBlock], ir: &[Ir51]) -> HashMap<u16, HashSet<usize>> {
+        let mut vars: HashMap<u16, HashSet<usize>> = HashMap::new();
+
+        for b in blocks {
+            for i in b.ir_range.clone() {
+                let ir = ir[i];
+
+                // TODO: Non usare _ => {} negli altri match sulle ir, sistemarli
+                match ir {
+                    Ir51::Move {
+                        dest: Operand::Address(addr, _),
+                        src,
+                    } => {
+                        vars.entry(addr).or_default().insert(b.id);
+                    }
+
+                    Ir51::BinOp {
+                        op,
+                        dest: Operand::Address(addr, _),
+                        lhs,
+                        rhs,
+                    } => {
+                        vars.entry(addr).or_default().insert(b.id);
+                    }
+
+                    Ir51::Load {
+                        space,
+                        dest_ptr: Operand::Address(addr, _),
+                    } => {
+                        vars.entry(addr).or_default().insert(b.id);
+                    }
+
+                    Ir51::BranchIf {
+                        cond: Operand::Address(addr, _),
+                        true_jmp,
+                        false_jmp,
+                    } => {
+                        vars.entry(addr).or_default().insert(b.id);
+                    }
+
+                    Ir51::BranchIf {
+                        cond,
+                        true_jmp,
+                        false_jmp,
+                    } => {}
+
+                    Ir51::Load { space, dest_ptr } => {}
+                    Ir51::BinOp { op, dest, lhs, rhs } => {}
+                    Ir51::Move { dest, src } => {}
+                    Ir51::Store { space, ptr, value } => {}
+                    Ir51::Jump(_) => {}
+                    Ir51::Call(_) => {}
+                    Ir51::Return => {}
+                    Ir51::InvalidIr => {}
+                }
+            }
+        }
+
+        vars
     }
 
     fn calculate_frontiers(
@@ -65,7 +167,7 @@ impl StaticSingleAssignment {
 
         let mut post_order = Vec::new();
         let mut visited = vec![false; blocks.len()];
-        StaticSingleAssignment::dfs_post_order(
+        SSABuilder::dfs_post_order(
             entry_index,
             blocks,
             &id_to_idx,
@@ -108,7 +210,7 @@ impl StaticSingleAssignment {
                             && p_idx != target_idom_idx
                             && idom[p_idx].is_some()
                         {
-                            target_idom_idx = StaticSingleAssignment::intersect(
+                            target_idom_idx = SSABuilder::intersect(
                                 p_idx,
                                 target_idom_idx,
                                 &idom,
@@ -149,9 +251,7 @@ impl StaticSingleAssignment {
             if let Some(&succ_idx) = id_to_idx.get(&succ_id)
                 && !visited[succ_idx]
             {
-                StaticSingleAssignment::dfs_post_order(
-                    succ_idx, blocks, id_to_idx, visited, post_order,
-                );
+                SSABuilder::dfs_post_order(succ_idx, blocks, id_to_idx, visited, post_order);
             }
         }
         post_order.push(idx);

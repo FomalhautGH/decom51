@@ -1,12 +1,8 @@
 #![allow(unused)]
 
 use crate::{
-    cfg_restorer::CFGRestorer,
-    lexer::Lexer,
-    lifter::Lifter,
-    mem_normalizer::MemNormalizer,
-    parser::Parser,
-    ssa::StaticSingleAssignment,
+    cfg_restorer::CFGRestorer, lexer::Lexer, lifter::Lifter, mem_normalizer::MemNormalizer,
+    parser::Parser, ssa::SSABuilder,
 };
 use std::io;
 
@@ -30,12 +26,8 @@ fn main() -> io::Result<()> {
 
     MemNormalizer::normalize(&mut ir_code);
 
-    for (i, ir) in ir_code.iter().enumerate() {
-        println!("{i}: {ir:?}")
-    }
-
     let mut graph = CFGRestorer::restore_raw_cfg(&ir_code);
-    StaticSingleAssignment::ssa(&mut graph, &mut ir_code);
+    SSABuilder::build(&mut graph, &mut ir_code);
 
     Ok(())
 }

@@ -6,7 +6,7 @@ use std::{
 
 use crate::common::{Ir51, Operand};
 
-type BlockId = usize;
+pub type BlockId = usize;
 
 #[derive(Debug)]
 pub struct Phi {
@@ -40,8 +40,6 @@ impl CFGRestorer {
 
         CFGRestorer::fill_successors(&mut blocks, ir_code);
         CFGRestorer::fill_predecessors(&mut blocks);
-
-        println!("{blocks:#?}");
 
         let blocks = blocks.into_iter().map(|b| (b.id, b)).collect();
 
