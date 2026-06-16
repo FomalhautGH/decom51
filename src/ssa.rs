@@ -6,23 +6,167 @@ use std::collections::{HashMap, HashSet};
 
 pub struct SSABuilder;
 
+// TODO: Invece di usare tanti hashset e hashmap che conofondono, usa `type` per rendere
+// comprensibile il tipo
 impl SSABuilder {
-    pub fn build(cfg: &mut ControlFlowGraph, ir: &mut [Ir51]) {
+    pub fn build(cfg: &mut ControlFlowGraph) {
         let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
-        let idoms = SSABuilder::calculate_idoms(&shared_blocks);
-        let dom_frontiers = SSABuilder::calculate_frontiers(&idoms, &shared_blocks);
-        let variables = SSABuilder::find_variables(&shared_blocks, ir);
+        let idoms = Self::calculate_idoms(&shared_blocks);
+        let dom_frontiers = Self::calculate_frontiers(&idoms, &shared_blocks);
+        let variables = Self::find_variables(&shared_blocks, &cfg.ir_code);
 
-        SSABuilder::insert_phis(&mut cfg.blocks, &dom_frontiers, &variables);
+        Self::insert_phis(&mut cfg.blocks, &dom_frontiers, &variables);
+        Self::fill_phis(cfg, &idoms, &variables);
 
-        // for (i, ir) in ir.iter().enumerate() {
-        //     println!("{i}: {ir:?}")
-        // }
+        for (i, ir) in cfg.ir_code.iter().enumerate() {
+            println!("{i}: {ir:?}")
+        }
 
+        // println!("{:#?}", cfg.blocks);
         // println!("{idoms:?}");
-        println!("{:#?}", cfg.blocks);
-        println!("{variables:?}");
-        println!("{dom_frontiers:?}");
+        // println!("{variables:?}");
+        // println!("{dom_frontiers:?}");
+    }
+
+    fn fill_phis(
+        cfg: &mut ControlFlowGraph,
+        idoms: &HashMap<usize, usize>,
+        variables: &HashMap<u16, HashSet<usize>>,
+    ) {
+        let mut version_counter: HashMap<u16, usize> = HashMap::new();
+        let mut dom_tree: HashMap<usize, HashSet<usize>> = HashMap::new();
+
+        for (block, &idom) in idoms {
+            if *block == idom {
+                continue;
+            } // Avoid cyclic in the tree
+            dom_tree.entry(idom).or_default().insert(*block);
+        }
+
+        let mut stack: HashMap<u16, Vec<usize>> = HashMap::new();
+        let mut to_visit = vec![cfg.start_block];
+        while let Some(block_index) = to_visit.pop() {
+            let block = cfg
+                .blocks
+                .get_mut(&block_index)
+                .expect("Non existent block for some reason");
+
+            // Phis
+            for phi in block.phis.iter_mut() {
+                let Phi {
+                    operand: Operand::Address(var, space),
+                    ..
+                } = phi
+                else {
+                    unreachable!("Phi without address operand")
+                };
+
+                let counter = version_counter
+                    .entry(*var)
+                    .and_modify(|counter| *counter += 1)
+                    .or_insert(1);
+
+                stack.entry(*var).or_default().push(*counter);
+                phi.operand = Operand::SSAVar {
+                    id: *var,
+                    version: *counter,
+                };
+            }
+
+            macro_rules! address_to_ssavar {(
+                    reads: [ $( $read_var:ident ),* ],
+                    writes: [ $( $write_var:ident ),* ],
+                    build: $builder:expr
+                ) => {{
+                    $( let $read_var = Self::read_op($read_var, &stack);)*
+                    $( let $write_var = Self::write_op($write_var, &mut stack, &mut version_counter);)*
+                    $builder
+                }};
+            }
+
+            // ------------------------------------
+            // Blocks
+            let ir_range = block.ir_range.clone();
+            for instr in &mut cfg.ir_code[ir_range] {
+                let newinstr = match &instr {
+                    Ir51::Move { dest, src } => address_to_ssavar! {
+                        reads: [src],
+                        writes: [dest],
+                        build: Ir51::Move { src, dest }
+                    },
+
+                    Ir51::BinOp { op, dest, lhs, rhs } => address_to_ssavar! {
+                        reads: [lhs, rhs],
+                        writes: [dest],
+                        build: Ir51::BinOp { op: *op, lhs, rhs, dest }
+                    },
+
+                    Ir51::Store { space, ptr, value } => address_to_ssavar! {
+                        reads: [ptr, value],
+                        writes: [],
+                        build: Ir51::Store { space: *space, ptr, value }
+                    },
+
+                    Ir51::Load { space, dest_ptr } => address_to_ssavar! {
+                        reads: [],
+                        writes: [dest_ptr],
+                        build: Ir51::Load { space: *space, dest_ptr }
+                    },
+
+                    Ir51::BranchIf {
+                        cond,
+                        true_jmp,
+                        false_jmp,
+                    } => address_to_ssavar! {
+                        reads: [cond],
+                        writes: [],
+                        build: Ir51::BranchIf { cond, true_jmp: *true_jmp, false_jmp: *false_jmp }
+                    },
+
+                    Ir51::Jump(tgt) => Ir51::Jump(*tgt),
+                    Ir51::Call(tgt) => Ir51::Call(*tgt),
+                    Ir51::Return => Ir51::Return,
+                    Ir51::InvalidIr => Ir51::InvalidIr,
+                };
+
+                *instr = newinstr;
+            }
+
+            if let Some(dominated_blocks) = dom_tree.get(&block_index) {
+                to_visit.extend(dominated_blocks);
+            }
+        }
+
+        println!("{:#?}", cfg.blocks)
+    }
+
+    fn read_op(op: &Operand, stack: &HashMap<u16, Vec<usize>>) -> Operand {
+        if let Operand::Address(id, AddrSpace::iData) = op {
+            let version = stack.get(id).and_then(|v| v.last()).copied().unwrap_or(0);
+            Operand::SSAVar { id: *id, version }
+        } else {
+            *op
+        }
+    }
+
+    fn write_op(
+        op: &Operand,
+        stack: &mut HashMap<u16, Vec<usize>>,
+        version_counter: &mut HashMap<u16, usize>,
+    ) -> Operand {
+        if let Operand::Address(id, AddrSpace::iData) = op {
+            let counter = version_counter
+                .entry(*id)
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
+            stack.entry(*id).or_default().push(*counter);
+            Operand::SSAVar {
+                id: *id,
+                version: *counter,
+            }
+        } else {
+            *op
+        }
     }
 
     fn insert_phis(
@@ -167,7 +311,7 @@ impl SSABuilder {
 
         let mut post_order = Vec::new();
         let mut visited = vec![false; blocks.len()];
-        SSABuilder::dfs_post_order(
+        Self::dfs_post_order(
             entry_index,
             blocks,
             &id_to_idx,
@@ -210,7 +354,7 @@ impl SSABuilder {
                             && p_idx != target_idom_idx
                             && idom[p_idx].is_some()
                         {
-                            target_idom_idx = SSABuilder::intersect(
+                            target_idom_idx = Self::intersect(
                                 p_idx,
                                 target_idom_idx,
                                 &idom,
@@ -251,7 +395,7 @@ impl SSABuilder {
             if let Some(&succ_idx) = id_to_idx.get(&succ_id)
                 && !visited[succ_idx]
             {
-                SSABuilder::dfs_post_order(succ_idx, blocks, id_to_idx, visited, post_order);
+                Self::dfs_post_order(succ_idx, blocks, id_to_idx, visited, post_order);
             }
         }
         post_order.push(idx);

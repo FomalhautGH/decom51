@@ -27,7 +27,7 @@ fn main() -> io::Result<()> {
     MemNormalizer::normalize(&mut ir_code);
 
     let mut graph = CFGRestorer::restore_raw_cfg(&ir_code);
-    SSABuilder::build(&mut graph, &mut ir_code);
+    SSABuilder::build(&mut graph);
 
     Ok(())
 }
