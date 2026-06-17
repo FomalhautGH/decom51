@@ -44,13 +44,15 @@ pub enum AddrSpace {
     Code,
 }
 
+pub type Addr = u16;
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Operand {
     Register(Register),
-    Address(u16, AddrSpace),
+    Address(Addr, AddrSpace),
     Temporary(usize),
     Costant(u16),
-    SSAVar { id: u16, version: usize },
+    SSAVar { addr: Addr, version: usize },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]

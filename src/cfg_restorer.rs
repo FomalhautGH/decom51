@@ -11,7 +11,7 @@ pub type BlockId = usize;
 #[derive(Debug)]
 pub struct Phi {
     pub operand: Operand,
-    pub incoming: HashMap<usize, usize>,
+    pub incoming: HashMap<BlockId, BlockId>,
 }
 
 #[derive(Debug)]
@@ -166,7 +166,13 @@ impl CFGRestorer {
                     after_jump = true;
                 }
 
-                _ => {}
+                Ir51::Move { .. } => {}
+                Ir51::BinOp { .. } => {}
+                Ir51::Store { .. } => {}
+                Ir51::Load { .. } => {}
+                Ir51::Call(_) => {}
+                Ir51::Return => {}
+                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             };
         }
 

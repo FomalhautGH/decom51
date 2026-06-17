@@ -122,7 +122,14 @@ impl<'a> Lifter<'a> {
                 Ir51::Jump(label) => {
                     *label = index_map[label];
                 }
-                _ => {}
+
+                Ir51::Move { .. } => {}
+                Ir51::BinOp { .. } => {}
+                Ir51::Store { .. } => {}
+                Ir51::Load { .. } => {}
+                Ir51::Call(_) => {}
+                Ir51::Return => {}
+                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }
     }
