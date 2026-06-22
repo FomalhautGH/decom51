@@ -39,8 +39,8 @@ pub enum Register {
 // TODO: controllare la prensenza di altri spazi di memoria
 pub enum AddrSpace {
     iData,
+    xData, // <-- Not supported like Code as well
     // Sfr,
-    xData,
     Code,
 }
 
