@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::common::Register::C;
 use crate::common::{AddrSpace, BinOp, Ir51, Operand, Register};
 use crate::parser;
 use crate::parser::{Instruction, Parser};
@@ -253,17 +254,40 @@ impl<'a> Lifter<'a> {
             _ => todo!("{dest:?}"),
         };
 
-        let op: Operand = match src {
+        let src: Operand = match src {
             parser::Operand::Reg(reg) => Operand::Register(reg),
             _ => todo!("{src:?}"),
         };
 
-        vec![Ir51::BinOp {
-            op: BinOp::Sub,
-            dest,
-            lhs: dest,
-            rhs: op,
-        }]
+        vec![
+            // This calculates the value that the carry should have after the subtraction
+            Ir51::BinOp {
+                op: BinOp::BorrowOut,
+                dest: Operand::Temporary(1),
+                lhs: dest,
+                rhs: src
+            },
+
+            // Here we do the subtraction and also subtract the original Carry
+            Ir51::BinOp {
+                op: BinOp::Sub,
+                dest: Operand::Temporary(0),
+                lhs: dest,
+                rhs: src,
+            },
+            Ir51::BinOp {
+                op: BinOp::Sub,
+                dest: dest,
+                lhs: Operand::Temporary(0),
+                rhs: Operand::Register(Register::C),
+            },
+
+            // We set the carry to the value it should have after the subtraction
+            Ir51::Move {
+                dest: Operand::Register(Register::C),
+                src: Operand::Temporary(1),
+            },
+        ]
     }
 
     fn cjne(&mut self, lhs: parser::Operand, rhs: parser::Operand, label: usize) -> Vec<Ir51> {

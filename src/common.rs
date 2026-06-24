@@ -72,6 +72,8 @@ pub enum BinOp {
     Le,
     Ge,
     Ne,
+
+    BorrowOut, // If lhs - rhs is negative the output for this is 1
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
