@@ -1,6 +1,6 @@
 use crate::{
     cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, Phi},
-    common::{Addr, AddrSpace, Ir51, Operand},
+    common::{Addr, AddrSpace, Ir51, Operand, TempIndex},
     ssa::chk_algorithm::{CHKAlgorithm, Dominators},
 };
 use std::collections::{HashMap, HashSet};
@@ -15,19 +15,26 @@ pub struct SSABuilder;
 //   in that specific block because outside that block they are not valid anymore
 enum VisitState {
     Enter(BlockId),
-    Exit(Vec<Addr>),
+    Exit(Vec<VarKey>),
+}
+
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
+enum VarKey {
+    Mem(Addr),       // For classic variables
+    Temp(TempIndex), // For temporary variables
 }
 
 // Represents variables by their address and the block they are modified in
-type VarsBlocks = HashMap<Addr, HashSet<BlockId>>;
+type VarsBlocks = HashMap<VarKey, HashSet<BlockId>>;
+
 type Frontiers = HashMap<BlockId, HashSet<BlockId>>;
 type DominatorsTree = HashMap<BlockId, HashSet<BlockId>>;
 
 // Type for counting the last version used for a variable
-type VersionCounter = HashMap<Addr, usize>;
+type VersionCounter = HashMap<VarKey, usize>;
 
 // Type for keeping track of the last valid version of a variable in a block
-type VersionStack = HashMap<Addr, Vec<usize>>;
+type VersionStack = HashMap<VarKey, Vec<usize>>;
 
 impl SSABuilder {
     pub fn build(cfg: &mut ControlFlowGraph) {
@@ -39,14 +46,19 @@ impl SSABuilder {
         Self::place_phis(&mut cfg.blocks, &dominator_frontiers, &variables);
         Self::ssa(cfg, &immidiate_dominators);
 
-        for (i, ir) in cfg.ir_code.iter().enumerate() {
-            println!("{i}: {ir:?}")
-        }
+        if cfg!(debug_assertions) {
+            println!("======================== SSA ========================");
+            println!("Immidiate dominators: {immidiate_dominators:?}");
+            println!("Variables and where they're modified: {variables:?}");
+            println!("Dominator frontiers: {dominator_frontiers:?}");
 
-        println!("{:#?}", cfg.blocks);
-        // println!("{idoms:?}");
-        // println!("{variables:?}");
-        // println!("{dom_frontiers:?}");
+            println!("======================== IR CODE AFTER SSA ========================");
+            for (i, ir) in cfg.ir_code.iter().enumerate() {
+                println!("{i}: {ir:?}")
+            }
+
+            println!("Blocks after SSA: {:#?}", cfg.blocks);
+        }
     }
 
     // We need this function to map addresses to their respective SSAVar with the correct version
@@ -84,7 +96,7 @@ impl SSABuilder {
         to_visit: &mut Vec<VisitState>,
         dom_tree: &DominatorsTree,
     ) {
-        let mut locals_vars: Vec<Addr> = Vec::new();
+        let mut locals_vars: Vec<VarKey> = Vec::new();
         let block = cfg
             .blocks
             .get_mut(&block_id)
@@ -132,7 +144,7 @@ impl SSABuilder {
                 let (Operand::Address(addr, _) | Operand::SSAVar { addr, .. }) = phi.operand else {
                     unreachable!()
                 };
-                let current_version = Self::get_stack_top_for(stack, addr);
+                let current_version = Self::get_stack_top_for(stack, VarKey::Mem(addr));
                 phi.incoming.insert(block_id, current_version);
             }
         }
@@ -142,7 +154,7 @@ impl SSABuilder {
         irs: &mut [Ir51],
         stack: &mut VersionStack,
         version_counter: &mut VersionCounter,
-        locals_vars: &mut Vec<Addr>,
+        locals_vars: &mut Vec<VarKey>,
     ) {
         irs.iter_mut().for_each(|ir| {
             *ir = Self::address_to_ssavar(*ir, stack, version_counter, locals_vars);
@@ -153,7 +165,7 @@ impl SSABuilder {
         block: &mut BasicBlock,
         stack: &mut VersionStack,
         version_counter: &mut VersionCounter,
-        locals_vars: &mut Vec<Addr>,
+        locals_vars: &mut Vec<VarKey>,
     ) {
         for phi in &mut block.phis {
             let op = Self::write_op(&phi.operand, stack, version_counter, locals_vars);
@@ -161,7 +173,7 @@ impl SSABuilder {
         }
     }
 
-    fn rollback_stack(stack: &mut VersionStack, variables: Vec<u16>) {
+    fn rollback_stack(stack: &mut VersionStack, variables: Vec<VarKey>) {
         for var in variables {
             if let Some(stack) = stack.get_mut(&var) {
                 stack.pop();
@@ -171,9 +183,9 @@ impl SSABuilder {
 
     fn address_to_ssavar(
         ir: Ir51,
-        stack: &mut HashMap<Addr, Vec<usize>>,
-        version_counter: &mut HashMap<Addr, usize>,
-        pushes_to_rollback: &mut Vec<Addr>,
+        stack: &mut VersionStack,
+        version_counter: &mut VersionCounter,
+        pushes_to_rollback: &mut Vec<VarKey>,
     ) -> Ir51 {
         match ir {
             Ir51::Move { dest, src } => {
@@ -224,11 +236,33 @@ impl SSABuilder {
     // When reading a variable we just take the top value of the stack and use it as the correct
     // version to read
     fn read_op(op: &Operand, stack: &VersionStack) -> Operand {
-        if let Operand::Address(id, AddrSpace::iData) = op {
-            let version = Self::get_stack_top_for(stack, *id);
-            Operand::SSAVar { addr: *id, version }
-        } else {
-            *op
+        match op {
+            Operand::Address(addr, AddrSpace::iData) => {
+                let key = VarKey::Mem(*addr);
+                let version = Self::get_stack_top_for(stack, key);
+
+                Operand::SSAVar {
+                    addr: *addr,
+                    version,
+                }
+            }
+
+            Operand::Temporary(index) => {
+                let key = VarKey::Temp(*index);
+                let version = Self::get_stack_top_for(stack, key);
+
+                Operand::TempSSAVar {
+                    index: *index,
+                    version,
+                }
+            }
+
+            Operand::Address(_, _) => todo!(),
+
+            Operand::Register(_)
+            | Operand::Costant(_)
+            | Operand::TempSSAVar { .. }
+            | Operand::SSAVar { .. } => *op,
         }
     }
 
@@ -238,23 +272,46 @@ impl SSABuilder {
         op: &Operand,
         stack: &mut VersionStack,
         version_counter: &mut VersionCounter,
-        local_vars: &mut Vec<Addr>,
+        local_vars: &mut Vec<VarKey>,
     ) -> Operand {
-        if let Operand::Address(addr, AddrSpace::iData) = op {
+        let mut update = |key| {
             let counter = version_counter
-                .entry(*addr)
+                .entry(key)
                 .and_modify(|ver| *ver += 1)
                 .or_insert(1);
-            stack.entry(*addr).or_default().push(*counter);
 
-            local_vars.push(*addr);
+            stack.entry(key).or_default().push(*counter);
+            local_vars.push(key);
 
-            Operand::SSAVar {
-                addr: *addr,
-                version: *counter,
+            *counter
+        };
+
+        match op {
+            Operand::Address(addr, AddrSpace::iData) => {
+                let key = VarKey::Mem(*addr);
+                let version = update(key);
+
+                Operand::SSAVar {
+                    addr: *addr,
+                    version,
+                }
             }
-        } else {
-            *op
+            Operand::Temporary(index) => {
+                let key = VarKey::Temp(*index);
+                let version = update(key);
+
+                Operand::TempSSAVar {
+                    index: *index,
+                    version,
+                }
+            }
+
+            Operand::Address(_, _) => todo!(),
+
+            Operand::Register(_)
+            | Operand::Costant(_)
+            | Operand::TempSSAVar { .. }
+            | Operand::SSAVar { .. } => *op,
         }
     }
 
@@ -273,12 +330,8 @@ impl SSABuilder {
         dom_tree
     }
 
-    fn get_stack_top_for(stack: &VersionStack, addr: u16) -> usize {
-        stack
-            .get(&addr)
-            .and_then(|v| v.last())
-            .copied()
-            .unwrap_or(0)
+    fn get_stack_top_for(stack: &VersionStack, key: VarKey) -> usize {
+        stack.get(&key).and_then(|v| v.last()).copied().unwrap_or(0)
     }
 
     fn place_phis(
@@ -287,7 +340,9 @@ impl SSABuilder {
         variables: &VarsBlocks,
     ) {
         for (var, worklist) in variables {
+            let VarKey::Mem(var) = var else { continue };
             let mut worklist: Vec<BlockId> = worklist.iter().copied().collect();
+
             while let Some(block_id) = worklist.pop() {
                 let block_frontiers = &frontiers[&block_id];
                 for frontier in block_frontiers {
@@ -319,48 +374,53 @@ impl SSABuilder {
         let mut vars: VarsBlocks = HashMap::new();
 
         for b in blocks {
+            let mut insert_var = |key| {
+                vars.entry(key).or_default().insert(b.id);
+            };
+
             for i in b.ir_range.clone() {
                 let ir = ir[i];
 
                 match ir {
+                    // Addresses
                     Ir51::Move {
                         dest: Operand::Address(addr, _),
                         ..
-                    } => {
-                        vars.entry(addr).or_default().insert(b.id);
                     }
-
-                    Ir51::BinOp {
+                    | Ir51::BinOp {
                         dest: Operand::Address(addr, _),
                         ..
-                    } => {
-                        vars.entry(addr).or_default().insert(b.id);
                     }
-
-                    Ir51::Load {
+                    | Ir51::Load {
                         dest_ptr: Operand::Address(addr, _),
                         ..
-                    } => {
-                        vars.entry(addr).or_default().insert(b.id);
                     }
-
-                    Ir51::BranchIf {
+                    | Ir51::BranchIf {
                         cond: Operand::Address(addr, _),
                         ..
-                    } => {
-                        vars.entry(addr).or_default().insert(b.id);
-                    }
+                    } => insert_var(VarKey::Mem(addr)),
 
+                    // Temporaries
+                    Ir51::BranchIf {
+                        cond: Operand::Temporary(index),
+                        ..
+                    }
+                    | Ir51::BinOp {
+                        dest: Operand::Temporary(index),
+                        ..
+                    } => insert_var(VarKey::Temp(index)),
+
+                    Ir51::Move { .. } => {}
                     Ir51::BranchIf { .. } => {}
                     Ir51::Load { .. } => {}
                     Ir51::BinOp { .. } => {}
-                    Ir51::Move { .. } => {}
                     Ir51::Store { .. } => {}
                     Ir51::Jump(_) => {}
                     Ir51::Call(_) => {}
                     Ir51::Return => {}
+
                     Ir51::InvalidIr => unreachable!("Invalid IR touched"),
-                }
+                };
             }
         }
 

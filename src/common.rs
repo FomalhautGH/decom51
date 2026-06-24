@@ -45,14 +45,21 @@ pub enum AddrSpace {
 }
 
 pub type Addr = u16;
+pub type Constant = u16;
+pub type Version = usize;
+pub type TempIndex = usize;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Operand {
     Register(Register),
+
+    Costant(Constant),
+
+    Temporary(TempIndex),
+    TempSSAVar { index: TempIndex, version: Version },
+
     Address(Addr, AddrSpace),
-    Temporary(usize),
-    Costant(u16),
-    SSAVar { addr: Addr, version: usize },
+    SSAVar { addr: Addr, version: Version },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]

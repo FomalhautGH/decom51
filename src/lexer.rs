@@ -56,6 +56,12 @@ impl Lexer {
         let mut contents = String::new();
 
         file.read_to_string(&mut contents)?;
+
+        if cfg!(debug_assertions) {
+            println!("======================== Intel 8051 CODE ========================");
+            println!("{contents}");
+        }
+
         Ok(Self {
             file_content: contents,
             index: 0,

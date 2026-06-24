@@ -37,6 +37,13 @@ impl<'a> Lifter<'a> {
         self.fix_jmps(&mut ir_code);
         self.edge_contraction(&mut ir_code);
 
+        if cfg!(debug_assertions) {
+            println!("======================== IR CODE ========================");
+            for (i, ir) in ir_code.iter().enumerate() {
+                println!("{i}: {ir:?}")
+            }
+        }
+
         ir_code
     }
 
