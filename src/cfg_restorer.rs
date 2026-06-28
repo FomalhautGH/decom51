@@ -7,8 +7,8 @@ use std::{
 use crate::common::{Ir51, Operand, Version};
 pub type BlockId = usize;
 
-// This type represents the block where the SSAVar comes from
-// SSAVar being represented by just its version since it is the same
+// This type represents the predecessor blocks where the SSAVar comes from,
+// SSAVar being represented by just its version since the address it's the same
 // as in the operand
 pub type Incoming = HashMap<BlockId, Version>;
 
@@ -27,10 +27,12 @@ pub struct BasicBlock {
     pub phis: Vec<Phi>,
 }
 
+pub type HashBlocks = HashMap<BlockId, BasicBlock>;
+
 #[derive(Debug)]
 pub struct ControlFlowGraph {
     pub ir_code: Vec<Ir51>,
-    pub blocks: HashMap<BlockId, BasicBlock>,
+    pub blocks: HashBlocks,
     pub start_block: BlockId,
 }
 
@@ -38,7 +40,7 @@ pub struct ControlFlowGraph {
 pub struct CFGRestorer;
 
 impl CFGRestorer {
-    pub fn restore_raw_cfg(ir_code: &[Ir51]) -> ControlFlowGraph {
+    pub fn restore_raw_cfg(ir_code: &mut [Ir51]) -> ControlFlowGraph {
         let leaders = CFGRestorer::find_leaders(ir_code);
         let mut blocks = CFGRestorer::create_blocks(ir_code, &leaders);
 
@@ -47,11 +49,17 @@ impl CFGRestorer {
 
         let blocks = blocks.into_iter().map(|b| (b.id, b)).collect();
 
+        if cfg!(debug_assertions) {
+            println!("======================== IR CODE AFTER CFG ========================");
+            for (i, ir) in ir_code.iter().enumerate() {
+                println!("{i}: {ir:?}")
+            }
+        }
+
         ControlFlowGraph {
             ir_code: ir_code.to_vec(),
             blocks,
-            start_block: 0, // TODO: to change in the future cuz the main doesn't always start at
-                            // block 0
+            start_block: 0, // TODO: to change in the future cuz the main doesn't always start at block 0
         }
     }
 
@@ -64,10 +72,10 @@ impl CFGRestorer {
         }
     }
 
-    fn fill_successors(blocks: &mut [BasicBlock], ir_code: &[Ir51]) {
+    fn fill_successors(blocks: &mut [BasicBlock], ir_code: &mut [Ir51]) {
         for i in 0..blocks.len() {
             let end = blocks[i].ir_range.end - 1;
-            let last_instr = ir_code[end];
+            let last_instr = ir_code.get_mut(end).unwrap();
 
             match last_instr {
                 Ir51::BranchIf {
@@ -75,38 +83,46 @@ impl CFGRestorer {
                     false_jmp,
                     ..
                 } => {
-                    let blockid_true = CFGRestorer::find_blockid_where(blocks, true_jmp);
-                    let blockid_false = CFGRestorer::find_blockid_where(blocks, false_jmp);
-                    blocks[i].successors.push(blockid_true);
-                    blocks[i].successors.push(blockid_false);
+                    *true_jmp = CFGRestorer::index_to_blockid(blocks, *true_jmp);
+                    *false_jmp = CFGRestorer::index_to_blockid(blocks, *false_jmp);
+                    blocks[i].successors.push(*true_jmp);
+                    blocks[i].successors.push(*false_jmp);
                 }
 
                 Ir51::Jump(whr) => {
-                    let blockid = CFGRestorer::find_blockid_where(blocks, whr);
-                    blocks[i].successors.push(blockid);
+                    *whr = CFGRestorer::index_to_blockid(blocks, *whr);
+                    blocks[i].successors.push(*whr);
                 }
 
-                // Last block doesn't have successors
-                _ if i == blocks.len() - 1 => {}
+                Ir51::Move { .. }
+                | Ir51::BinOp { .. }
+                | Ir51::Store { .. }
+                | Ir51::Load { .. }
+                | Ir51::Call(_)
+                | Ir51::Return => {
+                    if i != blocks.len() - 1 {
+                        blocks[i]
+                            .successors
+                            .push(CFGRestorer::index_to_blockid(blocks, end + 1));
+                    }
+                }
 
-                _ => blocks[i]
-                    .successors
-                    .push(CFGRestorer::find_blockid_where(blocks, end + 1)),
+                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }
     }
 
-    fn find_blockid_where(blocks: &[BasicBlock], addr: usize) -> usize {
+    fn index_to_blockid(blocks: &[BasicBlock], index: usize) -> usize {
         blocks
             .binary_search_by(|b| {
-                if b.ir_range.contains(&addr) {
+                if b.ir_range.contains(&index) {
                     Ordering::Equal
                 } else {
-                    b.ir_range.start.cmp(&addr)
+                    b.ir_range.start.cmp(&index)
                 }
             })
             .map(|i| blocks[i].id)
-            .unwrap_or_else(|_| unreachable!("Didnt find block with {addr} inside."))
+            .unwrap_or_else(|_| unreachable!("Didnt find block with {index} inside."))
     }
 
     fn create_blocks(ir_code: &[Ir51], leaders: &[usize]) -> Vec<BasicBlock> {

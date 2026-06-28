@@ -265,9 +265,8 @@ impl<'a> Lifter<'a> {
                 op: BinOp::BorrowOut,
                 dest: Operand::Temporary(1),
                 lhs: dest,
-                rhs: src
+                rhs: src,
             },
-
             // Here we do the subtraction and also subtract the original Carry
             Ir51::BinOp {
                 op: BinOp::Sub,
@@ -277,11 +276,10 @@ impl<'a> Lifter<'a> {
             },
             Ir51::BinOp {
                 op: BinOp::Sub,
-                dest: dest,
+                dest,
                 lhs: Operand::Temporary(0),
                 rhs: Operand::Register(Register::C),
             },
-
             // We set the carry to the value it should have after the subtraction
             Ir51::Move {
                 dest: Operand::Register(Register::C),
