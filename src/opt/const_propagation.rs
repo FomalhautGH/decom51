@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, HashBlocks, Phi},
     common::{Addr, BinOp, Constant, Ir51, Operand, TempIndex, Version},
+    opt::cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, Phi},
 };
 
 // TODO: Might move these in common.rs or something
@@ -49,6 +49,9 @@ enum UseLocation {
     Phi(usize),
 }
 
+// TODO: Since intel8051 is a small architecture we could make this better by also tracking
+// the RAMs states by avoiding to use Bottom when Loading from memory (in particular __idata)
+
 // TODO: try to use as mush fields in the main stucture also for the other
 // passes
 
@@ -74,6 +77,7 @@ impl ConstPropagation {
             println!("Def-Use Chain: {:?}", self.defuse_chain);
         }
 
+        // Start by inserting the first acr to analyze
         self.block_queue.push((cfg.start_block, cfg.start_block));
 
         while !self.block_queue.is_empty() || !self.ssa_queue.is_empty() {
@@ -134,9 +138,9 @@ impl ConstPropagation {
         };
 
         match ir {
-            Ir51::Move { dest, src } => insert(src),
+            Ir51::Move { src, .. } => insert(src),
 
-            Ir51::BinOp { op, dest, lhs, rhs } => {
+            Ir51::BinOp { lhs, rhs, .. } => {
                 insert(lhs);
                 insert(rhs);
             }
@@ -158,11 +162,6 @@ impl ConstPropagation {
 
     fn elaborate_ssavar(&mut self, cfg: &ControlFlowGraph) -> Option<()> {
         let ssavar = self.ssa_queue.pop()?;
-
-        if cfg!(debug_assertions) {
-            println!("Analyzing {ssavar:?} variable");
-        }
-
         let var_uses = self.defuse_chain.get(&ssavar)?.clone();
 
         for (block_id, var_use) in var_uses {
@@ -173,7 +172,7 @@ impl ConstPropagation {
             match var_use {
                 UseLocation::Instruction(index) => self.elaborate_ir(&cfg.ir_code, index, block_id),
                 UseLocation::Phi(index) => {
-                    self.elaborate_phi(&cfg.blocks[&block_id], index, block_id)
+                    self.elaborate_phi(&cfg.blocks[&block_id], index)
                 }
             }
         }
@@ -181,9 +180,9 @@ impl ConstPropagation {
         Some(())
     }
 
-    fn elaborate_phi(&mut self, block: &BasicBlock, index: usize, block_id: BlockId) {
+    fn elaborate_phi(&mut self, block: &BasicBlock, index: usize) {
         let phi = &block.phis[index];
-        self.phi(phi, block_id);
+        self.phi(phi);
     }
 
     fn elaborate_ir(&mut self, ir_code: &[Ir51], index: usize, block_id: BlockId) {
@@ -197,40 +196,28 @@ impl ConstPropagation {
                 false_jmp,
             } => self.branchif(cond, *true_jmp, *false_jmp, block_id),
 
-            Ir51::Store {
-                space,
-                dest_ptr,
-                value,
-            } => todo!(),
-
-            Ir51::Load {
-                space,
-                dest,
-                src_ptr,
-            } => todo!(),
+            Ir51::Store { .. } => todo!(),
+            Ir51::Load { .. } => todo!(),
 
             Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
-            Ir51::InvalidIr => unreachable!(),
+            Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
 
     fn propagate_block(&mut self, cfg: &mut ControlFlowGraph) -> Option<()> {
         let (from, to) = self.block_queue.pop()?;
-        if cfg!(debug_assertions) {
-            println!("Analyzing ({from}, {to}) arc");
-        }
-        let (from, to) = (&cfg.blocks[&from], &cfg.blocks[&to]);
+        let (_, to) = (&cfg.blocks[&from], &cfg.blocks[&to]);
 
-        self.propagate_phi(&to.phis, to.id);
-        if !self.reachable_blocks.insert(to.id) {
-            return Some(());
-        }
-        self.propagate_ir(from, &cfg.ir_code, to);
+        // We propagate the phis every time we enter a block (not the phis from the block
+        // we come from) and if we already seen the 'to' block we don't re-propagate the ir
+        self.propagate_phi(&to.phis);
+        self.reachable_blocks.insert(to.id).then_some(())?;
+        self.propagate_ir(&cfg.ir_code, to);
 
         Some(())
     }
 
-    fn propagate_ir(&mut self, from: &BasicBlock, ir_code: &[Ir51], to: &BasicBlock) {
+    fn propagate_ir(&mut self, ir_code: &[Ir51], to: &BasicBlock) {
         let ir_range = to.ir_range.clone();
         let ir_code = &ir_code[ir_range];
 
@@ -251,12 +238,13 @@ impl ConstPropagation {
                 }
 
                 Ir51::Store {
-                    space,
-                    dest_ptr: ptr,
-                    value,
-                } => {},
+                    ..
+                } => {}
 
-                Ir51::Load { space, dest, src_ptr } => self.dest_to_state(dest, SSAState::Bottom),
+                Ir51::Load {
+                    dest,
+                    ..
+                } => self.dest_to_state(dest, SSAState::Bottom),
 
                 Ir51::BranchIf {
                     cond,
@@ -310,7 +298,6 @@ impl ConstPropagation {
                 }
                 self.dest_to_state(dest, src_state);
             }
-            _ => unreachable!(),
         };
     }
 
@@ -333,7 +320,6 @@ impl ConstPropagation {
             },
 
             (lhs, rhs) => self.propagate_binop_state(op, dest, lhs, rhs),
-            _ => unreachable!(),
         }
     }
 
@@ -401,19 +387,14 @@ impl ConstPropagation {
         }
     }
 
-    // ===================================== INIT Functions =====================================
-    #[rustfmt::skip]
-    fn propagate_phi(
-        &mut self,
-        to_phis: &[Phi],
-        to_id: BlockId,
-    ) {
+    fn propagate_phi(&mut self, to_phis: &[Phi]) {
         for phi in to_phis {
-            self.phi(phi, to_id);
+            self.phi(phi);
         }
     }
 
-    fn phi(&mut self, phi: &Phi, to_id: BlockId) {
+    fn phi(&mut self, phi: &Phi) {
+        // Phis should always be an SSAVar
         let Operand::SSAVar {
             addr,
             version: actual_version,
@@ -422,46 +403,59 @@ impl ConstPropagation {
             unreachable!()
         };
 
-        let actual_key = &(addr, actual_version);
         for incoming_version in phi.incoming.values() {
-            let incoming_key = &(addr, *incoming_version);
-            if actual_key == incoming_key { continue; }
-
-            let [Some(val), Some(arg)] = self
-                .known_values
-                .get_disjoint_mut([actual_key, incoming_key])
-            else {
-                unreachable!("");
-            };
-
-            let result_state = match (*val, *arg) {
-                (SSAState::Constant(x), SSAState::Constant(y)) => {
-                    if x == y {
-                        SSAState::Constant(x)
-                    } else {
-                        SSAState::Bottom
-                    }
-                }
-
-                (SSAState::Top, SSAState::Constant(v)) => SSAState::Constant(v),
-                (SSAState::Constant(v), SSAState::Top) => SSAState::Constant(v),
-
-                (SSAState::Top, SSAState::Bottom)
-                | (SSAState::Bottom, SSAState::Top)
-                | (SSAState::Bottom, SSAState::Bottom)
-                | (SSAState::Bottom, SSAState::Constant(_))
-                | (SSAState::Constant(_), SSAState::Bottom) => SSAState::Bottom,
-
-                (SSAState::Top, SSAState::Top) => SSAState::Top,
-            };
-
-            if &result_state != val {
-                *val = result_state;
-                self.ssa_queue.push(Either::SSAVar((addr, actual_version)));
-            }
+            self.delta_phi(addr, actual_version, *incoming_version);
         }
     }
 
+    fn delta_phi(
+        &mut self,
+        addr: Addr,
+        actual_version: usize,
+        incoming_version: usize,
+    ) {
+        if actual_version == incoming_version {
+            return;
+        }
+
+        let actual_key = &(addr, actual_version);
+        let incoming_key = &(addr, incoming_version);
+
+        let [Some(val), Some(arg)] = self
+            .known_values
+            .get_disjoint_mut([actual_key, incoming_key])
+        else {
+            unreachable!("");
+        };
+
+        let result_state = match (*val, *arg) {
+            (SSAState::Constant(x), SSAState::Constant(y)) => {
+                if x == y {
+                    SSAState::Constant(x)
+                } else {
+                    SSAState::Bottom
+                }
+            }
+
+            (SSAState::Top, SSAState::Constant(v)) => SSAState::Constant(v),
+            (SSAState::Constant(v), SSAState::Top) => SSAState::Constant(v),
+
+            (SSAState::Top, SSAState::Bottom)
+            | (SSAState::Bottom, SSAState::Top)
+            | (SSAState::Bottom, SSAState::Bottom)
+            | (SSAState::Bottom, SSAState::Constant(_))
+            | (SSAState::Constant(_), SSAState::Bottom) => SSAState::Bottom,
+
+            (SSAState::Top, SSAState::Top) => SSAState::Top,
+        };
+
+        if &result_state != val {
+            *val = result_state;
+            self.ssa_queue.push(Either::SSAVar((addr, actual_version)));
+        }
+    }
+
+    // ===================================== INIT Functions =====================================
     fn init_to_top(&mut self, cfg: &ControlFlowGraph) {
         let ir_code = &cfg.ir_code;
         for block in cfg.blocks.values() {

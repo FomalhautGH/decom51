@@ -1,35 +1,30 @@
 use std::collections::HashMap;
 
-use crate::common::Register::C;
 use crate::common::{AddrSpace, BinOp, Ir51, Operand, Register};
-use crate::parser;
-use crate::parser::{Instruction, Parser};
+use crate::syntax::{Argument, Instruction};
 
-pub struct Lifter<'a> {
-    parser: &'a mut Parser<'a>,
+pub struct Lifter {
     labels_index: HashMap<usize, usize>,
     current_index: usize,
 }
 
-impl<'a> Lifter<'a> {
-    pub fn new(parser: &'a mut Parser<'a>) -> Self {
+impl Lifter {
+    pub fn new() -> Self {
         Self {
-            parser,
             labels_index: HashMap::new(),
             current_index: 0,
         }
     }
 
-    pub fn get_ir_instructions(&mut self) -> Vec<Ir51> {
+    pub fn get_ir_instructions(&mut self, instructions: &[Instruction]) -> Vec<Ir51> {
         let mut ir_code = vec![];
 
-        loop {
-            let instr = self.parser.parse_next();
-            if instr == Instruction::End {
+        for instr in instructions {
+            if *instr == Instruction::End {
                 break;
             }
 
-            let irs = self.get_ir_from_instruction(instr);
+            let irs = self.get_ir_from_instruction(*instr);
             self.current_index += irs.len();
 
             ir_code.extend(irs);
@@ -163,7 +158,7 @@ impl<'a> Lifter<'a> {
             Instruction::Lcall(label) => vec![Ir51::Call(label)],
 
             Instruction::Mov(dest, src) => self.mov(dest, src),
-            Instruction::Clr(dest) => self.mov(dest, parser::Operand::Data8(0)),
+            Instruction::Clr(dest) => self.mov(dest, Argument::Data8(0)),
             Instruction::Inc(dest) => self.increment(dest),
 
             Instruction::Subb(dest, op) => self.subb(dest, op),
@@ -235,9 +230,9 @@ impl<'a> Lifter<'a> {
         vec![Ir51::Jump(label)]
     }
 
-    fn increment(&mut self, dest: parser::Operand) -> Vec<Ir51> {
+    fn increment(&mut self, dest: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
-            parser::Operand::Reg(reg) => Operand::Register(reg),
+            Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{dest:?}"),
         };
 
@@ -249,14 +244,14 @@ impl<'a> Lifter<'a> {
         }]
     }
 
-    fn subb(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51> {
+    fn subb(&mut self, dest: Argument, src: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
-            parser::Operand::Reg(reg) => Operand::Register(reg),
+            Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{dest:?}"),
         };
 
         let src: Operand = match src {
-            parser::Operand::Reg(reg) => Operand::Register(reg),
+            Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{src:?}"),
         };
 
@@ -281,7 +276,7 @@ impl<'a> Lifter<'a> {
             },
             Ir51::BinOp {
                 op: BinOp::Sub,
-                dest: dest,
+                dest,
                 lhs: Operand::Temporary(0),
                 rhs: Operand::Register(Register::C),
             },
@@ -294,14 +289,14 @@ impl<'a> Lifter<'a> {
         ]
     }
 
-    fn cjne(&mut self, lhs: parser::Operand, rhs: parser::Operand, label: usize) -> Vec<Ir51> {
+    fn cjne(&mut self, lhs: Argument, rhs: Argument, label: usize) -> Vec<Ir51> {
         let lhs: Operand = match lhs {
-            parser::Operand::Reg(reg) => Operand::Register(reg),
+            Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{lhs:?}"),
         };
 
         let rhs: Operand = match rhs {
-            parser::Operand::Data8(imm8) => Operand::Costant(imm8.into()),
+            Argument::Data8(imm8) => Operand::Costant(imm8.into()),
             _ => todo!("{rhs:?}"),
         };
 
@@ -329,18 +324,18 @@ impl<'a> Lifter<'a> {
         ]
     }
 
-    fn mov(&mut self, dest: parser::Operand, src: parser::Operand) -> Vec<Ir51> {
+    fn mov(&mut self, dest: Argument, src: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
-            parser::Operand::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
-            parser::Operand::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
+            Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{dest:?}"),
         };
 
         let src: Operand = match src {
-            parser::Operand::Data8(imm8) => Operand::Costant(imm8.into()),
-            parser::Operand::Data16(imm16) => Operand::Costant(imm16),
-            parser::Operand::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
-            parser::Operand::Reg(reg) => Operand::Register(reg),
+            Argument::Data8(imm8) => Operand::Costant(imm8.into()),
+            Argument::Data16(imm16) => Operand::Costant(imm16),
+            Argument::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
+            Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{src:?}"),
         };
 

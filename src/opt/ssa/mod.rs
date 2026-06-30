@@ -1,7 +1,9 @@
 use crate::{
-    cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, Phi},
     common::{Addr, AddrSpace, Ir51, Operand, TempIndex},
-    ssa::chk_algorithm::{CHKAlgorithm, Dominators},
+    opt::{
+        cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, Phi},
+        ssa::chk_algorithm::{CHKAlgorithm, Dominators},
+    },
 };
 use std::collections::{HashMap, HashSet};
 
