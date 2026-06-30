@@ -10,15 +10,24 @@ impl MemNormalizer {
                     src: MemNormalizer::opreg_to_opaddress(src),
                 },
 
-                Ir51::Store { space, ptr, value } => Ir51::Store {
+                Ir51::Store {
                     space,
-                    ptr: MemNormalizer::opreg_to_opaddress(ptr),
+                    dest_ptr,
+                    value,
+                } => Ir51::Store {
+                    space,
+                    dest_ptr: MemNormalizer::opreg_to_opaddress(dest_ptr),
                     value: MemNormalizer::opreg_to_opaddress(value),
                 },
 
-                Ir51::Load { space, dest_ptr } => Ir51::Load {
+                Ir51::Load {
                     space,
-                    dest_ptr: MemNormalizer::opreg_to_opaddress(dest_ptr),
+                    dest,
+                    src_ptr,
+                } => Ir51::Load {
+                    space,
+                    dest: MemNormalizer::opreg_to_opaddress(dest),
+                    src_ptr: MemNormalizer::opreg_to_opaddress(src_ptr),
                 },
 
                 Ir51::BranchIf {

@@ -73,7 +73,8 @@ pub enum BinOp {
     Ge,
     Ne,
 
-    BorrowOut, // If lhs - rhs is negative the output for this is 1
+    Or,
+    BorrowOut, // lhs < rhs
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -91,12 +92,13 @@ pub enum Ir51 {
 
     Store {
         space: AddrSpace,
-        ptr: Operand,
+        dest_ptr: Operand,
         value: Operand,
     },
     Load {
         space: AddrSpace,
-        dest_ptr: Operand,
+        dest: Operand,
+        src_ptr: Operand,
     },
 
     Jump(usize),

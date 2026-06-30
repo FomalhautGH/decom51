@@ -9,6 +9,7 @@ use crate::{
 type SSAVar = (Addr, Version);
 type TempSSAVar = (TempIndex, Version);
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 enum Either {
     SSAVar(SSAVar),
     TempSSAVar(TempSSAVar),
@@ -36,6 +37,18 @@ type BlockQueue = Vec<(BlockId, BlockId)>;
 // Represents the variables that changed SSAState
 type SSAQueue = Vec<Either>;
 
+// This is the def-use chain, represents for every SSAVar or TempSSAVar every place that
+// it is used (thanks to the blockid and the specific ir index) in so that we can update
+// it when the state for one of them changes
+type DefUseChain = HashMap<Either, Vec<(BlockId, UseLocation)>>;
+
+// We need this to differentiate when a use is referred to the phis or the classic instructions
+#[derive(Debug, Clone, Copy)]
+enum UseLocation {
+    Instruction(usize),
+    Phi(usize),
+}
+
 // TODO: try to use as mush fields in the main stucture also for the other
 // passes
 
@@ -47,75 +60,242 @@ pub struct ConstPropagation {
     temporaries: TemporaryValues,
     block_queue: BlockQueue,
     ssa_queue: SSAQueue,
+    defuse_chain: DefUseChain,
     reachable_blocks: HashSet<BlockId>,
 }
 
 impl ConstPropagation {
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
-        self.init_to_unknown(cfg);
-
-        self.block_queue.push((cfg.start_block, cfg.start_block));
-        while !self.block_queue.is_empty() || !self.ssa_queue.is_empty() {
-            self.propagate_block(cfg);
-        }
+        self.init_to_top(cfg);
+        self.init_defusechain(cfg);
 
         if cfg!(debug_assertions) {
             println!("======================== CONST PROP ========================");
+            println!("Def-Use Chain: {:?}", self.defuse_chain);
+        }
+
+        self.block_queue.push((cfg.start_block, cfg.start_block));
+
+        while !self.block_queue.is_empty() || !self.ssa_queue.is_empty() {
+            self.propagate_block(cfg); // Phase 1
+            self.elaborate_ssavar(cfg); // Phase 2
+        }
+
+        if cfg!(debug_assertions) {
             println!("Variables: {:?}", self.known_values);
             println!("Temporaries: {:?}", self.temporaries);
         }
     }
 
-    #[rustfmt::skip]
-    fn propagate_block(
-        &mut self,
-        cfg: &mut ControlFlowGraph
-    ) {
-        let Some((src, dest)) = self.block_queue.pop() else { return; };
-        let (src, dest) = (&cfg.blocks[&src], &cfg.blocks[&dest]);
+    fn init_defusechain(&mut self, cfg: &ControlFlowGraph) {
+        let ir_code = &cfg.ir_code;
+        for block in cfg.blocks.values() {
+            for (i, phi) in block.phis.iter().enumerate() {
+                self.insert_use_for_phi(phi, i, block.id);
+            }
 
-        self.propagate_phi(&src.phis, src.id);
-        if !self.reachable_blocks.insert(dest.id) { return; }
-        self.propagate_ir(&dest, &cfg.ir_code, src.id);
+            let ir_range = block.ir_range.clone();
+            for i in ir_range {
+                self.insert_use_for_ir(ir_code, i, block.id);
+            }
+        }
     }
 
-    fn propagate_ir(&mut self, dest: &BasicBlock, ir_code: &[Ir51], src_id: BlockId) {
-        let ir_range = dest.ir_range.clone();
+    fn insert_use_for_phi(&mut self, phi: &Phi, phi_index: usize, block_id: BlockId) {
+        for incoming_version in phi.incoming.values() {
+            let Operand::SSAVar { addr, .. } = phi.operand else {
+                unreachable!();
+            };
+            let operand = Operand::SSAVar {
+                addr,
+                version: *incoming_version,
+            };
+            let operand = Self::operand_to_either(&operand);
+            self.defuse_chain
+                .entry(operand)
+                .or_default()
+                .push((block_id, UseLocation::Phi(phi_index)));
+        }
+    }
+
+    fn insert_use_for_ir(&mut self, ir_code: &[Ir51], ir_index: usize, block_id: BlockId) {
+        let ir = &ir_code[ir_index];
+
+        let mut insert = |operand: &Operand| {
+            if let Operand::Costant(_) = operand {
+                return;
+            }
+
+            let src = Self::operand_to_either(operand);
+            self.defuse_chain
+                .entry(src)
+                .or_default()
+                .push((block_id, UseLocation::Instruction(ir_index)));
+        };
+
+        match ir {
+            Ir51::Move { dest, src } => insert(src),
+
+            Ir51::BinOp { op, dest, lhs, rhs } => {
+                insert(lhs);
+                insert(rhs);
+            }
+
+            Ir51::Store {
+                dest_ptr, value, ..
+            } => {
+                insert(dest_ptr);
+                insert(value);
+            }
+
+            Ir51::Load { src_ptr, .. } => insert(src_ptr),
+            Ir51::BranchIf { cond, .. } => insert(cond),
+
+            Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
+            Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
+        }
+    }
+
+    fn elaborate_ssavar(&mut self, cfg: &ControlFlowGraph) -> Option<()> {
+        let ssavar = self.ssa_queue.pop()?;
+
+        if cfg!(debug_assertions) {
+            println!("Analyzing {ssavar:?} variable");
+        }
+
+        let var_uses = self.defuse_chain.get(&ssavar)?.clone();
+
+        for (block_id, var_use) in var_uses {
+            if !self.reachable_blocks.contains(&block_id) {
+                continue;
+            }
+
+            match var_use {
+                UseLocation::Instruction(index) => self.elaborate_ir(&cfg.ir_code, index, block_id),
+                UseLocation::Phi(index) => {
+                    self.elaborate_phi(&cfg.blocks[&block_id], index, block_id)
+                }
+            }
+        }
+
+        Some(())
+    }
+
+    fn elaborate_phi(&mut self, block: &BasicBlock, index: usize, block_id: BlockId) {
+        let phi = &block.phis[index];
+        self.phi(phi, block_id);
+    }
+
+    fn elaborate_ir(&mut self, ir_code: &[Ir51], index: usize, block_id: BlockId) {
+        let instruction = &ir_code[index];
+        match instruction {
+            Ir51::Move { dest, src } => self.mov(dest, src),
+            Ir51::BinOp { op, dest, lhs, rhs } => self.binop(*op, dest, lhs, rhs),
+            Ir51::BranchIf {
+                cond,
+                true_jmp,
+                false_jmp,
+            } => self.branchif(cond, *true_jmp, *false_jmp, block_id),
+
+            Ir51::Store {
+                space,
+                dest_ptr,
+                value,
+            } => todo!(),
+
+            Ir51::Load {
+                space,
+                dest,
+                src_ptr,
+            } => todo!(),
+
+            Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
+            Ir51::InvalidIr => unreachable!(),
+        }
+    }
+
+    fn propagate_block(&mut self, cfg: &mut ControlFlowGraph) -> Option<()> {
+        let (from, to) = self.block_queue.pop()?;
+        if cfg!(debug_assertions) {
+            println!("Analyzing ({from}, {to}) arc");
+        }
+        let (from, to) = (&cfg.blocks[&from], &cfg.blocks[&to]);
+
+        self.propagate_phi(&to.phis, to.id);
+        if !self.reachable_blocks.insert(to.id) {
+            return Some(());
+        }
+        self.propagate_ir(from, &cfg.ir_code, to);
+
+        Some(())
+    }
+
+    fn propagate_ir(&mut self, from: &BasicBlock, ir_code: &[Ir51], to: &BasicBlock) {
+        let ir_range = to.ir_range.clone();
         let ir_code = &ir_code[ir_range];
+
+        let mut is_last_jump = false;
 
         // The variable we assign to beign that this pass its executed just after the SSA
         // the destination variable is always Top (or Unknown)
         for ir in ir_code {
             match ir {
-                Ir51::Move { dest, src } => self.mov(dest, src),
-                Ir51::BinOp { op, dest, lhs, rhs } => self.binop(*op, dest, lhs, rhs),
+                Ir51::Move { dest, src } => {
+                    self.mov(dest, src);
+                    is_last_jump = false;
+                }
 
-                Ir51::Store { space, ptr, value } => todo!(),
-                Ir51::Load { space, dest_ptr } => todo!(),
+                Ir51::BinOp { op, dest, lhs, rhs } => {
+                    self.binop(*op, dest, lhs, rhs);
+                    is_last_jump = false;
+                }
+
+                Ir51::Store {
+                    space,
+                    dest_ptr: ptr,
+                    value,
+                } => {},
+
+                Ir51::Load { space, dest, src_ptr } => self.dest_to_state(dest, SSAState::Bottom),
 
                 Ir51::BranchIf {
                     cond,
                     true_jmp,
                     false_jmp,
-                } => self.branchif(cond, *true_jmp, *false_jmp, src_id),
+                } => {
+                    self.branchif(cond, *true_jmp, *false_jmp, to.id);
+                    is_last_jump = true;
+                }
 
-                Ir51::Jump(target) => self.block_queue.push((src_id, *target)),
+                Ir51::Jump(target) => {
+                    self.block_queue.push((to.id, *target));
+                    is_last_jump = true;
+                }
 
-                Ir51::Call(_) | Ir51::Return => {}
+                Ir51::Call(_) | Ir51::Return => is_last_jump = false,
                 Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
             }
         }
+
+        // If we didn't found any jump at the end of the block it means
+        // we have to push the only successor of this block
+        if !is_last_jump {
+            let [successor] = to.successors[..] else {
+                return;
+            };
+            self.block_queue.push((to.id, successor));
+        }
     }
 
-    fn branchif(&mut self, cond: &Operand, true_jmp: BlockId, false_jmp: BlockId, from: BlockId) {
+    fn branchif(&mut self, cond: &Operand, true_jmp: BlockId, false_jmp: BlockId, to_id: BlockId) {
         let cond_state = self.get_operand_state(cond);
         match cond_state {
             SSAState::Top => {}
-            SSAState::Constant(0) => self.block_queue.push((from, false_jmp)),
-            SSAState::Constant(_) => self.block_queue.push((from, true_jmp)),
+            SSAState::Constant(0) => self.block_queue.push((to_id, false_jmp)),
+            SSAState::Constant(_) => self.block_queue.push((to_id, true_jmp)),
             SSAState::Bottom => {
-                self.block_queue.push((from, true_jmp));
-                self.block_queue.push((from, false_jmp));
+                self.block_queue.push((to_id, true_jmp));
+                self.block_queue.push((to_id, false_jmp));
             }
         }
     }
@@ -172,12 +352,13 @@ impl ConstPropagation {
         }
     }
 
-    fn dest_to_binop_result(&mut self, op: BinOp, dest: &Operand, x: Constant, y: Constant) {
+    fn dest_to_binop_result(&mut self, op: BinOp, dest: &Operand, lhs: Constant, rhs: Constant) {
         let result = match op {
-            BinOp::BorrowOut => todo!(),
-            BinOp::Add => x.overflowing_add(y),
-            BinOp::Sub => x.overflowing_sub(y),
-            BinOp::Eq => todo!(),
+            BinOp::BorrowOut => ((lhs < rhs) as u16, false),
+            BinOp::Eq => ((lhs == rhs) as u16, false),
+            BinOp::Add => lhs.overflowing_add(rhs),
+            BinOp::Sub => lhs.overflowing_sub(rhs),
+            BinOp::Or => ((lhs != 0 || rhs != 0) as u16, false),
             BinOp::Lt => todo!(),
             BinOp::Gt => todo!(),
             BinOp::Le => todo!(),
@@ -197,8 +378,10 @@ impl ConstPropagation {
             Either::TempSSAVar(key) => self.temporaries.get_mut(&key).unwrap(),
         };
 
-        *dest_state = state;
-        self.ssa_queue.push(dest);
+        if *dest_state != state {
+            *dest_state = state;
+            self.ssa_queue.push(dest);
+        }
     }
 
     fn get_operand_state(&mut self, operand: &Operand) -> SSAState {
@@ -212,9 +395,9 @@ impl ConstPropagation {
     // TODO: Maybe to this mapping with an .into()
     fn operand_to_either(op: &Operand) -> Either {
         match op {
-            Operand::TempSSAVar { index, version } => Either::TempSSAVar((*index, *version)),
             Operand::SSAVar { addr, version } => Either::SSAVar((*addr, *version)),
-            _ => unreachable!(),
+            Operand::TempSSAVar { index, version } => Either::TempSSAVar((*index, *version)),
+            _ => unreachable!("{op:?}"),
         }
     }
 
@@ -222,22 +405,36 @@ impl ConstPropagation {
     #[rustfmt::skip]
     fn propagate_phi(
         &mut self,
-        phis: &[Phi],
-        src_id: BlockId,
+        to_phis: &[Phi],
+        to_id: BlockId,
     ) {
-        for phi in phis {
-            let Operand::SSAVar {
-                addr,
-                version: actual_version,
-            } = phi.operand
-            else { unreachable!() };
+        for phi in to_phis {
+            self.phi(phi, to_id);
+        }
+    }
 
-            let Some(incoming_version) = phi.incoming.get(&src_id) else { continue; };
+    fn phi(&mut self, phi: &Phi, to_id: BlockId) {
+        let Operand::SSAVar {
+            addr,
+            version: actual_version,
+        } = phi.operand
+        else {
+            unreachable!()
+        };
 
-            let val = self.known_values[&(addr, actual_version)];
-            let arg = self.known_values[&(addr, *incoming_version)];
+        let actual_key = &(addr, actual_version);
+        for incoming_version in phi.incoming.values() {
+            let incoming_key = &(addr, *incoming_version);
+            if actual_key == incoming_key { continue; }
 
-            let result_state = match (val, arg) {
+            let [Some(val), Some(arg)] = self
+                .known_values
+                .get_disjoint_mut([actual_key, incoming_key])
+            else {
+                unreachable!("");
+            };
+
+            let result_state = match (*val, *arg) {
                 (SSAState::Constant(x), SSAState::Constant(y)) => {
                     if x == y {
                         SSAState::Constant(x)
@@ -258,42 +455,73 @@ impl ConstPropagation {
                 (SSAState::Top, SSAState::Top) => SSAState::Top,
             };
 
-            if result_state < val {
+            if &result_state != val {
+                *val = result_state;
                 self.ssa_queue.push(Either::SSAVar((addr, actual_version)));
             }
         }
     }
 
-    fn init_to_unknown(&mut self, cfg: &ControlFlowGraph) {
-        for ir in &cfg.ir_code {
-            self.set_ir_unknown(ir);
+    fn init_to_top(&mut self, cfg: &ControlFlowGraph) {
+        let ir_code = &cfg.ir_code;
+        for block in cfg.blocks.values() {
+            let phis = &block.phis;
+            for phi in phis {
+                self.set_phi_top(phi);
+            }
+
+            let ir_range = block.ir_range.clone();
+            let irs = &ir_code[ir_range];
+            for ir in irs {
+                self.set_ir_top(ir);
+            }
         }
     }
 
-    fn set_ir_unknown(&mut self, ir: &Ir51) {
+    fn set_phi_top(&mut self, phi: &Phi) {
+        let Operand::SSAVar { addr, .. } = phi.operand else {
+            unreachable!()
+        };
+
+        self.operand_to_top(&phi.operand);
+
+        for incoming_version in phi.incoming.values() {
+            let operand = Operand::SSAVar {
+                addr,
+                version: *incoming_version,
+            };
+            self.operand_to_top(&operand);
+        }
+    }
+
+    fn set_ir_top(&mut self, ir: &Ir51) {
         match ir {
             Ir51::Move { dest, src } => {
-                self.operand_to_unknown(dest);
-                self.operand_to_unknown(src);
+                self.operand_to_top(dest);
+                self.operand_to_top(src);
             }
 
             Ir51::BinOp { dest, lhs, rhs, .. } => {
-                self.operand_to_unknown(dest);
-                self.operand_to_unknown(lhs);
-                self.operand_to_unknown(rhs);
+                self.operand_to_top(dest);
+                self.operand_to_top(lhs);
+                self.operand_to_top(rhs);
             }
 
-            Ir51::Store { ptr, value, .. } => {
-                self.operand_to_unknown(ptr);
-                self.operand_to_unknown(value);
+            Ir51::Store {
+                dest_ptr: ptr,
+                value,
+                ..
+            } => {
+                self.operand_to_top(ptr);
+                self.operand_to_top(value);
             }
 
-            Ir51::Load { dest_ptr, .. } => {
-                self.operand_to_unknown(dest_ptr);
+            Ir51::Load { dest: dest_ptr, .. } => {
+                self.operand_to_top(dest_ptr);
             }
 
             Ir51::BranchIf { cond, .. } => {
-                self.operand_to_unknown(cond);
+                self.operand_to_top(cond);
             }
 
             Ir51::Call(_) | Ir51::Return | Ir51::Jump(_) => {}
@@ -301,7 +529,7 @@ impl ConstPropagation {
         }
     }
 
-    fn operand_to_unknown(&mut self, operand: &Operand) {
+    fn operand_to_top(&mut self, operand: &Operand) {
         match operand {
             Operand::SSAVar { addr, version } => {
                 self.known_values.insert((*addr, *version), SSAState::Top)

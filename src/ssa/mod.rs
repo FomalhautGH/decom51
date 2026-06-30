@@ -53,8 +53,27 @@ impl SSABuilder {
             println!("Dominator frontiers: {dominator_frontiers:?}");
 
             println!("======================== IR CODE AFTER SSA ========================");
-            for (i, ir) in cfg.ir_code.iter().enumerate() {
-                println!("{i}: {ir:?}")
+
+            for block in cfg.blocks.values() {
+                println!(
+                    "----------------------- Block number {} -----------------------",
+                    block.id
+                );
+
+                println!("Phis: ");
+                for (i, phi) in block.phis.iter().enumerate() {
+                    println!("{i}: {phi:?}")
+                }
+
+                println!("Irs: ");
+                for (i, ir) in cfg.ir_code.get(block.ir_range.clone()).iter().enumerate() {
+                    println!("{i}: {ir:?}")
+                }
+
+                println!(
+                    "----------------------- End block number {} -----------------------",
+                    block.id
+                );
             }
 
             println!("Blocks after SSA: {:#?}", cfg.blocks);
@@ -201,16 +220,32 @@ impl SSABuilder {
                 Ir51::BinOp { op, dest, lhs, rhs }
             }
 
-            Ir51::Store { space, ptr, value } => {
-                let ptr = Self::read_op(&ptr, stack);
+            Ir51::Store {
+                space,
+                dest_ptr,
+                value,
+            } => {
+                let dest_ptr = Self::read_op(&dest_ptr, stack);
                 let value = Self::read_op(&value, stack);
-                Ir51::Store { space, ptr, value }
+                Ir51::Store {
+                    space,
+                    dest_ptr,
+                    value,
+                }
             }
 
-            Ir51::Load { space, dest_ptr } => {
-                let dest_ptr =
-                    Self::write_op(&dest_ptr, stack, version_counter, pushes_to_rollback);
-                Ir51::Load { space, dest_ptr }
+            Ir51::Load {
+                space,
+                dest,
+                src_ptr,
+            } => {
+                let dest = Self::write_op(&dest, stack, version_counter, pushes_to_rollback);
+                let src_ptr = Self::read_op(&src_ptr, stack);
+                Ir51::Load {
+                    space,
+                    dest,
+                    src_ptr,
+                }
             }
 
             Ir51::BranchIf {
@@ -392,7 +427,7 @@ impl SSABuilder {
                         ..
                     }
                     | Ir51::Load {
-                        dest_ptr: Operand::Address(addr, _),
+                        dest: Operand::Address(addr, _),
                         ..
                     }
                     | Ir51::BranchIf {

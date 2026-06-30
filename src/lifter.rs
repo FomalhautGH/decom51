@@ -203,7 +203,7 @@ impl<'a> Lifter<'a> {
         vec![
             Ir51::Store {
                 space: AddrSpace::iData,
-                ptr: Operand::Register(Register::SP),
+                dest_ptr: Operand::Register(Register::SP),
                 value: Operand::Costant(value.into()),
             },
             Ir51::BinOp {
@@ -219,7 +219,8 @@ impl<'a> Lifter<'a> {
         vec![
             Ir51::Load {
                 space: AddrSpace::iData,
-                dest_ptr: Operand::Address(value.into(), AddrSpace::iData),
+                src_ptr: Operand::Register(Register::SP),
+                dest: Operand::Address(value.into(), AddrSpace::iData),
             },
             Ir51::BinOp {
                 op: BinOp::Add,
@@ -260,14 +261,12 @@ impl<'a> Lifter<'a> {
         };
 
         vec![
-            // This calculates the value that the carry should have after the subtraction
             Ir51::BinOp {
                 op: BinOp::BorrowOut,
                 dest: Operand::Temporary(1),
                 lhs: dest,
                 rhs: src,
             },
-            // Here we do the subtraction and also subtract the original Carry
             Ir51::BinOp {
                 op: BinOp::Sub,
                 dest: Operand::Temporary(0),
@@ -275,15 +274,22 @@ impl<'a> Lifter<'a> {
                 rhs: src,
             },
             Ir51::BinOp {
-                op: BinOp::Sub,
-                dest,
+                op: BinOp::BorrowOut,
+                dest: Operand::Temporary(2),
                 lhs: Operand::Temporary(0),
                 rhs: Operand::Register(Register::C),
             },
-            // We set the carry to the value it should have after the subtraction
-            Ir51::Move {
+            Ir51::BinOp {
+                op: BinOp::Sub,
+                dest: dest,
+                lhs: Operand::Temporary(0),
+                rhs: Operand::Register(Register::C),
+            },
+            Ir51::BinOp {
+                op: BinOp::Or,
                 dest: Operand::Register(Register::C),
-                src: Operand::Temporary(1),
+                lhs: Operand::Temporary(1),
+                rhs: Operand::Temporary(2),
             },
         ]
     }
