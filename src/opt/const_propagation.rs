@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    common::{Addr, BinOp, Constant, Ir51, Operand, TempIndex, Version},
-    opt::cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, Phi},
+    common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, TempIndex, Version},
+    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 
 // TODO: Might move these in common.rs or something
@@ -171,9 +171,7 @@ impl ConstPropagation {
 
             match var_use {
                 UseLocation::Instruction(index) => self.elaborate_ir(&cfg.ir_code, index, block_id),
-                UseLocation::Phi(index) => {
-                    self.elaborate_phi(&cfg.blocks[&block_id], index)
-                }
+                UseLocation::Phi(index) => self.elaborate_phi(&cfg.blocks[&block_id], index),
             }
         }
 
@@ -204,6 +202,7 @@ impl ConstPropagation {
         }
     }
 
+    // TODO: from isn't actually used anywhere afaik so remove it
     fn propagate_block(&mut self, cfg: &mut ControlFlowGraph) -> Option<()> {
         let (from, to) = self.block_queue.pop()?;
         let (_, to) = (&cfg.blocks[&from], &cfg.blocks[&to]);
@@ -237,14 +236,8 @@ impl ConstPropagation {
                     is_last_jump = false;
                 }
 
-                Ir51::Store {
-                    ..
-                } => {}
-
-                Ir51::Load {
-                    dest,
-                    ..
-                } => self.dest_to_state(dest, SSAState::Bottom),
+                Ir51::Store { .. } => {}
+                Ir51::Load { dest, .. } => self.dest_to_state(dest, SSAState::Bottom),
 
                 Ir51::BranchIf {
                     cond,
@@ -408,12 +401,7 @@ impl ConstPropagation {
         }
     }
 
-    fn delta_phi(
-        &mut self,
-        addr: Addr,
-        actual_version: usize,
-        incoming_version: usize,
-    ) {
+    fn delta_phi(&mut self, addr: Addr, actual_version: usize, incoming_version: usize) {
         if actual_version == incoming_version {
             return;
         }

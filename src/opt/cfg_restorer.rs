@@ -4,19 +4,7 @@ use std::{
     ops::Range,
 };
 
-use crate::common::{Ir51, Operand, Version};
-pub type BlockId = usize;
-
-// This type represents the predecessor blocks where the SSAVar comes from,
-// SSAVar being represented by just its version since the address it's the same
-// as in the operand
-pub type Incoming = HashMap<BlockId, Version>;
-
-#[derive(Debug)]
-pub struct Phi {
-    pub operand: Operand,
-    pub incoming: Incoming,
-}
+use crate::common::{BlockId, Ir51, Phi};
 
 #[derive(Debug)]
 pub struct BasicBlock {

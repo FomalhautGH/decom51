@@ -1,7 +1,7 @@
 use crate::{
-    common::{Addr, AddrSpace, Ir51, Operand, TempIndex},
+    common::{Addr, AddrSpace, BlockId, Ir51, Operand, Phi, TempIndex},
     opt::{
-        cfg_restorer::{BasicBlock, BlockId, ControlFlowGraph, Phi},
+        cfg_restorer::{BasicBlock, ControlFlowGraph},
         ssa::chk_algorithm::{CHKAlgorithm, Dominators},
     },
 };

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Register {
@@ -113,4 +115,17 @@ pub enum Ir51 {
 
     Return,
     InvalidIr,
+}
+
+pub type BlockId = usize;
+
+// This type represents the predecessor blocks where the SSAVar comes from,
+// SSAVar being represented by just its version since the address it's the same
+// as in the operand
+pub type Incoming = HashMap<BlockId, Version>;
+
+#[derive(Debug)]
+pub struct Phi {
+    pub operand: Operand,
+    pub incoming: Incoming,
 }

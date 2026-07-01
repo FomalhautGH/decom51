@@ -1,4 +1,4 @@
-use crate::opt::cfg_restorer::{BasicBlock, BlockId};
+use crate::{common::BlockId, opt::cfg_restorer::BasicBlock};
 use std::collections::HashMap;
 
 pub type Dominators = HashMap<BlockId, BlockId>;
