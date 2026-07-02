@@ -165,8 +165,16 @@ impl SSABuilder {
                 let (Operand::Address(addr, _) | Operand::SSAVar { addr, .. }) = phi.operand else {
                     unreachable!()
                 };
+
                 let current_version = Self::get_stack_top_for(stack, VarKey::Mem(addr));
-                phi.incoming.insert(block_id, current_version);
+
+                phi.incoming.insert(
+                    block_id,
+                    Operand::SSAVar {
+                        addr,
+                        version: current_version,
+                    },
+                );
             }
         }
     }

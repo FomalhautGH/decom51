@@ -51,19 +51,14 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(file_path: &str) -> io::Result<Self> {
-        let mut file = File::open(file_path)?;
-        let mut contents = String::new();
-
-        file.read_to_string(&mut contents)?;
-
+    pub fn new(content: String) -> io::Result<Self> {
         if cfg!(debug_assertions) {
             println!("======================== Intel 8051 CODE ========================");
-            println!("{contents}");
+            println!("{content}");
         }
 
         Ok(Self {
-            file_content: contents,
+            file_content: content,
             index: 0,
             line: 1,
         })

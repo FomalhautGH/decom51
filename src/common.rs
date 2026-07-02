@@ -64,6 +64,20 @@ pub enum Operand {
     SSAVar { addr: Addr, version: Version },
 }
 
+impl Operand {
+    pub fn extract_ssa_version(&self) -> Version {
+        match self {
+            Operand::SSAVar { addr, version } => *version,
+            Operand::TempSSAVar { index, version } => *version,
+
+            Operand::Register(_)
+            | Operand::Costant(_)
+            | Operand::Temporary(_)
+            | Operand::Address(_, _) => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum BinOp {
     Add,
@@ -121,8 +135,8 @@ pub type BlockId = usize;
 
 // This type represents the predecessor blocks where the SSAVar comes from,
 // SSAVar being represented by just its version since the address it's the same
-// as in the operand
-pub type Incoming = HashMap<BlockId, Version>;
+// as in the operand. Edit: I changed to Operand insted for rewrite phase
+pub type Incoming = HashMap<BlockId, Operand>;
 
 #[derive(Debug)]
 pub struct Phi {

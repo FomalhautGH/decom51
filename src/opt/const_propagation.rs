@@ -19,17 +19,17 @@ enum Either {
 // Dynamic which means we cannot infer the constant value. We can only go down from Unknown to
 // Dynamic but not up, they're also called Top, Constant and Bottom.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-enum SSAState {
+pub enum SSAState {
     Bottom,
     Constant(Constant),
     Top,
 }
 
 // This type represent for every variable and version its SSAState
-type VariableValues = HashMap<SSAVar, SSAState>;
+pub type VariableValues = HashMap<SSAVar, SSAState>;
 
 // This represent the same thing but for Temporary variables
-type TemporaryValues = HashMap<TempSSAVar, SSAState>;
+pub type TemporaryValues = HashMap<TempSSAVar, SSAState>;
 
 // Represents the blocks we have to visit by the predecessor and the successor
 type BlockQueue = Vec<(BlockId, BlockId)>;
@@ -59,8 +59,8 @@ enum UseLocation {
 // https://en.wikipedia.org/wiki/Sparse_conditional_constant_propagation
 #[derive(Default)]
 pub struct ConstPropagation {
-    known_values: VariableValues,
-    temporaries: TemporaryValues,
+    pub known_values: VariableValues,
+    pub known_temps: TemporaryValues,
     block_queue: BlockQueue,
     ssa_queue: SSAQueue,
     defuse_chain: DefUseChain,
@@ -68,7 +68,7 @@ pub struct ConstPropagation {
 }
 
 impl ConstPropagation {
-    pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
+    pub fn execute(&mut self, cfg: &ControlFlowGraph) {
         self.init_to_top(cfg);
         self.init_defusechain(cfg);
 
@@ -87,7 +87,7 @@ impl ConstPropagation {
 
         if cfg!(debug_assertions) {
             println!("Variables: {:?}", self.known_values);
-            println!("Temporaries: {:?}", self.temporaries);
+            println!("Temporaries: {:?}", self.known_temps);
         }
     }
 
@@ -106,14 +106,16 @@ impl ConstPropagation {
     }
 
     fn insert_use_for_phi(&mut self, phi: &Phi, phi_index: usize, block_id: BlockId) {
-        for incoming_version in phi.incoming.values() {
+        for incoming in phi.incoming.values() {
             let Operand::SSAVar { addr, .. } = phi.operand else {
                 unreachable!();
             };
+
             let operand = Operand::SSAVar {
                 addr,
-                version: *incoming_version,
+                version: incoming.extract_ssa_version(),
             };
+
             let operand = Self::operand_to_either(&operand);
             self.defuse_chain
                 .entry(operand)
@@ -203,7 +205,7 @@ impl ConstPropagation {
     }
 
     // TODO: from isn't actually used anywhere afaik so remove it
-    fn propagate_block(&mut self, cfg: &mut ControlFlowGraph) -> Option<()> {
+    fn propagate_block(&mut self, cfg: &ControlFlowGraph) -> Option<()> {
         let (from, to) = self.block_queue.pop()?;
         let (_, to) = (&cfg.blocks[&from], &cfg.blocks[&to]);
 
@@ -354,7 +356,7 @@ impl ConstPropagation {
 
         let dest_state = match dest {
             Either::SSAVar(key) => self.known_values.get_mut(&key).unwrap(),
-            Either::TempSSAVar(key) => self.temporaries.get_mut(&key).unwrap(),
+            Either::TempSSAVar(key) => self.known_temps.get_mut(&key).unwrap(),
         };
 
         if *dest_state != state {
@@ -367,7 +369,7 @@ impl ConstPropagation {
         let operand = Self::operand_to_either(operand);
         *match operand {
             Either::SSAVar(key) => self.known_values.get(&key).unwrap(),
-            Either::TempSSAVar(key) => self.temporaries.get(&key).unwrap(),
+            Either::TempSSAVar(key) => self.known_temps.get(&key).unwrap(),
         }
     }
 
@@ -381,9 +383,7 @@ impl ConstPropagation {
     }
 
     fn propagate_phi(&mut self, to_phis: &[Phi]) {
-        for phi in to_phis {
-            self.phi(phi);
-        }
+        to_phis.iter().for_each(|phi| self.phi(phi));
     }
 
     fn phi(&mut self, phi: &Phi) {
@@ -396,8 +396,8 @@ impl ConstPropagation {
             unreachable!()
         };
 
-        for incoming_version in phi.incoming.values() {
-            self.delta_phi(addr, actual_version, *incoming_version);
+        for incoming in phi.incoming.values() {
+            self.delta_phi(addr, actual_version, incoming.extract_ssa_version());
         }
     }
 
@@ -448,15 +448,11 @@ impl ConstPropagation {
         let ir_code = &cfg.ir_code;
         for block in cfg.blocks.values() {
             let phis = &block.phis;
-            for phi in phis {
-                self.set_phi_top(phi);
-            }
+            phis.iter().for_each(|phi| self.set_phi_top(phi));
 
             let ir_range = block.ir_range.clone();
             let irs = &ir_code[ir_range];
-            for ir in irs {
-                self.set_ir_top(ir);
-            }
+            irs.iter().for_each(|ir| self.set_ir_top(ir));
         }
     }
 
@@ -467,10 +463,10 @@ impl ConstPropagation {
 
         self.operand_to_top(&phi.operand);
 
-        for incoming_version in phi.incoming.values() {
+        for incoming in phi.incoming.values() {
             let operand = Operand::SSAVar {
                 addr,
-                version: *incoming_version,
+                version: incoming.extract_ssa_version(),
             };
             self.operand_to_top(&operand);
         }
@@ -517,7 +513,7 @@ impl ConstPropagation {
                 self.known_values.insert((*addr, *version), SSAState::Top)
             }
             Operand::TempSSAVar { index, version } => {
-                self.temporaries.insert((*index, *version), SSAState::Top)
+                self.known_temps.insert((*index, *version), SSAState::Top)
             }
 
             // TODO: Make these unreachable since we shouldn't get here, we have to implement a DCE pass just after the CFG creation
