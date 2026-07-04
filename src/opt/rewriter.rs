@@ -83,19 +83,13 @@ impl<'a> Rewriter<'a> {
                 }
             }
             Ir51::Store {
-                dest_ptr,
-                value,
-                ..
+                dest_ptr, value, ..
             } => {
                 self.rewrite_operand(dest_ptr);
                 self.rewrite_operand(value);
             }
 
-            Ir51::Load {
-                dest,
-                src_ptr,
-                ..
-            } => {
+            Ir51::Load { dest, src_ptr, .. } => {
                 self.rewrite_operand(dest);
                 self.rewrite_operand(src_ptr);
             }

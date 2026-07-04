@@ -33,7 +33,7 @@ pub struct DeadCodeElimination {
 }
 
 impl DeadCodeElimination {
-    pub fn dce(&mut self, cfg: &mut ControlFlowGraph) {
+    pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         self.use_and_def_count(cfg).unwrap(); // Phase 1: Calculates how many times a variable/temp is used
         self.scan_irs(cfg); // Phase 2: Look at all the destinations of the ir instructions
         // and if they aren't used mark them as dead
@@ -52,6 +52,7 @@ impl DeadCodeElimination {
         if cfg!(debug_assertions) {
             println!("======================== IR CODE CLEANED ========================");
             for (i, ir) in cfg.ir_code.iter().enumerate() {
+                if matches!(ir, Ir51::Nop) { continue; }
                 println!("{i}: {ir:?}")
             }
         }
@@ -203,11 +204,10 @@ impl DeadCodeElimination {
                 }
             }
 
-            // We should't get here but we do beacause we still havent'
-            // done the first DCE
-            Operand::Address(_, _) => {}
-
-            Operand::Costant(_) | Operand::Temporary(_) | Operand::Register(_) => {
+            Operand::Address(_, _)
+            | Operand::Costant(_)
+            | Operand::Temporary(_)
+            | Operand::Register(_) => {
                 unreachable!("{dest:?}")
             }
         };
@@ -264,9 +264,7 @@ impl DeadCodeElimination {
                 self.use_count_on_operand(rhs);
             }
             Ir51::Store {
-                dest_ptr,
-                value,
-                ..
+                dest_ptr, value, ..
             } => {
                 self.use_count_on_operand(dest_ptr);
                 self.use_count_on_operand(value);
@@ -274,19 +272,12 @@ impl DeadCodeElimination {
 
             // TODO: We probably have to check the space, because if it isnt' iData there
             // could be side-effect, in that chase we don't wanna remove this ir
-            Ir51::Load {
-                dest,
-                src_ptr,
-                ..
-            } => {
+            Ir51::Load { dest, src_ptr, .. } => {
                 self.save_def(dest, UseLocation::Instruction(ir_index));
                 self.use_count_on_operand(src_ptr);
             }
 
-            Ir51::BranchIf {
-                cond,
-                ..
-            } => self.use_count_on_operand(cond),
+            Ir51::BranchIf { cond, .. } => self.use_count_on_operand(cond),
 
             Ir51::Nop => {}
             Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
@@ -304,12 +295,8 @@ impl DeadCodeElimination {
                 self.temporary_defs.insert((*index, *version), loc);
             }
 
-            // We should't get here but we do beacause we still havent'
-            // done the first DCE
-            Operand::Address(_, _) => {}
-
             Operand::Costant(_) => {}
-            Operand::Register(_) | Operand::Temporary(_) => unreachable!(),
+            Operand::Address(_, _) | Operand::Register(_) | Operand::Temporary(_) => unreachable!(),
         }
     }
 

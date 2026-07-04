@@ -516,12 +516,12 @@ impl ConstPropagation {
                 self.known_temps.insert((*index, *version), SSAState::Top)
             }
 
-            // TODO: Make these unreachable since we shouldn't get here, we have to implement a DCE pass just after the CFG creation
-            Operand::Address(_, _) | Operand::Temporary(_) => None,
-
             // We work on constant later
             Operand::Costant(_) => None,
-            op @ Operand::Register(_) => unreachable!("{op:?}"),
+
+            Operand::Address(_, _) | Operand::Temporary(_) | Operand::Register(_) => {
+                unreachable!("{operand:?}")
+            }
         };
     }
 }
