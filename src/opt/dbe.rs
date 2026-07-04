@@ -1,7 +1,4 @@
-use crate::{
-    common::{BlockId, Ir51},
-    opt::cfg_restorer::ControlFlowGraph,
-};
+use crate::{common::BlockId, opt::cfg_restorer::ControlFlowGraph};
 use std::collections::HashSet;
 
 #[derive(Default)]
@@ -24,19 +21,8 @@ impl DeadBlockElimination {
     }
 
     fn cleanup(&self, cfg: &mut ControlFlowGraph) {
-        cfg.blocks.retain(|block_id, block| {
-            if !self.reached_blocks.contains(block_id) {
-                let range = block.ir_range.clone();
-
-                for ir in &mut cfg.ir_code[range] {
-                    *ir = Ir51::Nop;
-                }
-
-                false
-            } else {
-                true
-            }
-        });
+        cfg.blocks
+            .retain(|block_id, _| self.reached_blocks.contains(block_id));
     }
 
     fn visit_cfg(&mut self, cfg: &ControlFlowGraph) {

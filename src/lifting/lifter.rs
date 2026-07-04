@@ -185,7 +185,7 @@ impl Lifter {
                 op: BinOp::Eq,
                 dest: Operand::Temporary(0),
                 lhs: Operand::Register(Register::C),
-                rhs: Operand::Costant(0),
+                rhs: Operand::Constant(0),
             },
             Ir51::BranchIf {
                 cond: Operand::Temporary(0),
@@ -200,13 +200,13 @@ impl Lifter {
             Ir51::Store {
                 space: AddrSpace::iData,
                 dest_ptr: Operand::Register(Register::SP),
-                value: Operand::Costant(value.into()),
+                value: Operand::Constant(value.into()),
             },
             Ir51::BinOp {
                 op: BinOp::Sub,
                 dest: Operand::Register(Register::SP),
                 lhs: Operand::Register(Register::SP),
-                rhs: Operand::Costant(1),
+                rhs: Operand::Constant(1),
             },
         ]
     }
@@ -222,7 +222,7 @@ impl Lifter {
                 op: BinOp::Add,
                 dest: Operand::Register(Register::SP),
                 lhs: Operand::Register(Register::SP),
-                rhs: Operand::Costant(1),
+                rhs: Operand::Constant(1),
             },
         ]
     }
@@ -241,7 +241,7 @@ impl Lifter {
             op: BinOp::Add,
             dest,
             lhs: dest,
-            rhs: Operand::Costant(1),
+            rhs: Operand::Constant(1),
         }]
     }
 
@@ -297,7 +297,7 @@ impl Lifter {
         };
 
         let rhs: Operand = match rhs {
-            Argument::Data8(imm8) => Operand::Costant(imm8.into()),
+            Argument::Data8(imm8) => Operand::Constant(imm8.into()),
             _ => todo!("{rhs:?}"),
         };
 
@@ -333,8 +333,8 @@ impl Lifter {
         };
 
         let src: Operand = match src {
-            Argument::Data8(imm8) => Operand::Costant(imm8.into()),
-            Argument::Data16(imm16) => Operand::Costant(imm16),
+            Argument::Data8(imm8) => Operand::Constant(imm8.into()),
+            Argument::Data16(imm16) => Operand::Constant(imm16),
             Argument::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
             Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{src:?}"),

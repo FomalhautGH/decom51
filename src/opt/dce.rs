@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 enum UseLocation {
-    Instruction(usize),
+    Instruction(BlockId, usize),
     Phi(BlockId, usize),
 }
 
@@ -34,7 +34,7 @@ pub struct DeadCodeElimination {
 
 impl DeadCodeElimination {
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
-        self.use_and_def_count(cfg).unwrap(); // Phase 1: Calculates how many times a variable/temp is used
+        self.use_and_def_count(cfg); // Phase 1: Calculates how many times a variable/temp is used
         self.scan_irs(cfg); // Phase 2: Look at all the destinations of the ir instructions
         // and if they aren't used mark them as dead
 
@@ -51,27 +51,41 @@ impl DeadCodeElimination {
 
         if cfg!(debug_assertions) {
             println!("======================== IR CODE CLEANED ========================");
-            for (i, ir) in cfg.ir_code.iter().enumerate() {
-                if matches!(ir, Ir51::Nop) { continue; }
-                println!("{i}: {ir:?}")
-            }
-        }
-    }
-
-    fn cleanup(&mut self, cfg: &mut ControlFlowGraph) {
-        while let Some(dead_instr) = self.dead_instructions.pop() {
-            match dead_instr {
-                UseLocation::Instruction(index) => self.delete_instruction(cfg, index),
-                UseLocation::Phi(block, index) => {
-                    self.delete_phi(cfg.blocks.get_mut(&block).unwrap(), index)
+            for block in cfg.blocks.values() {
+                println!("Block {}:", block.id);
+                for (i, ir) in block.irs.iter().enumerate() {
+                    println!("  {i}: {ir:?}")
                 }
             }
         }
     }
 
-    fn delete_instruction(&mut self, cfg: &mut ControlFlowGraph, index: usize) {
-        match &cfg.ir_code[index] {
+    fn cleanup(&mut self, cfg: &mut ControlFlowGraph) {
+        // Cleanup all the dead instructions
+        while let Some(dead_instr) = self.dead_instructions.pop() {
+            match dead_instr {
+                UseLocation::Instruction(block_id, index) => {
+                    self.delete_instruction(cfg, block_id, index)
+                }
+                UseLocation::Phi(block, index) => {
+                    self.delete_phi(cfg.blocks.get_mut(&block).unwrap(), index)
+                }
+            }
+        }
+
+        // Cleanup all the nops
+        for block in cfg.blocks.values_mut() {
+            block.irs.retain(|ir| !matches!(ir, Ir51::Nop));
+        }
+    }
+
+    fn delete_instruction(&mut self, cfg: &mut ControlFlowGraph, block_id: BlockId, index: usize) {
+        let block = cfg.blocks.get_mut(&block_id).unwrap();
+        match &block.irs[index] {
             Ir51::Move { src, .. } => self.use_count_subtract(src),
+            Ir51::Load { src_ptr, .. } => self.use_count_subtract(src_ptr),
+            Ir51::BranchIf { cond, .. } => self.use_count_subtract(cond),
+
             Ir51::BinOp { lhs, rhs, .. } => {
                 self.use_count_subtract(lhs);
                 self.use_count_subtract(rhs);
@@ -84,15 +98,11 @@ impl DeadCodeElimination {
                 self.use_count_subtract(value);
             }
 
-            Ir51::Load { src_ptr, .. } => self.use_count_subtract(src_ptr),
-
-            Ir51::BranchIf { cond, .. } => self.use_count_subtract(cond),
-
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
 
-        cfg.ir_code[index] = Ir51::Nop;
+        block.irs[index] = Ir51::Nop;
     }
 
     fn use_count_subtract(&mut self, operand: &Operand) {
@@ -126,7 +136,7 @@ impl DeadCodeElimination {
                 });
             }
 
-            Operand::Costant(_) => {}
+            Operand::Constant(_) => {}
             Operand::Register(_) | Operand::Temporary(_) | Operand::Address(_, _) => unreachable!(),
         }
     }
@@ -139,7 +149,7 @@ impl DeadCodeElimination {
         };
 
         for incoming in phi.incoming.values() {
-            if matches!(incoming, Operand::Costant(_)) {
+            if matches!(incoming, Operand::Constant(_)) {
                 continue;
             }
 
@@ -152,22 +162,19 @@ impl DeadCodeElimination {
         }
 
         // TODO: Change this to non valid operand
-        phi.operand = Operand::Costant(0);
+        phi.operand = Operand::Constant(0);
     }
 
     // ========================= Phase 2 =========================
     fn scan_irs(&mut self, cfg: &ControlFlowGraph) {
         for block in cfg.blocks.values() {
-            block
-                .phis
-                .iter()
-                .enumerate()
-                .for_each(|(i, phi)| self.scan_phi(phi, i, block.id));
+            for (i, phi) in block.phis.iter().enumerate() {
+                self.scan_phi(phi, i, block.id);
+            }
 
-            block
-                .ir_range
-                .clone()
-                .for_each(|i| self.scan_ir(&cfg.ir_code[i], i));
+            for (i, ir) in block.irs.iter().enumerate() {
+                self.scan_ir(ir, i, block.id);
+            }
         }
     }
 
@@ -175,16 +182,22 @@ impl DeadCodeElimination {
         self.check_usage(phi.operand, UseLocation::Phi(blockid, index));
     }
 
-    fn scan_ir(&mut self, ir: &Ir51, index: usize) {
+    fn scan_ir(&mut self, ir: &Ir51, index: usize, blockid: BlockId) {
         match ir {
-            Ir51::Move { dest, .. } => self.check_usage(*dest, UseLocation::Instruction(index)),
-            Ir51::Load { dest, .. } => self.check_usage(*dest, UseLocation::Instruction(index)),
-            Ir51::BranchIf { cond, .. } => self.check_usage(*cond, UseLocation::Instruction(index)),
-            Ir51::Store { .. } => {}
+            Ir51::Move { dest, .. } => {
+                self.check_usage(*dest, UseLocation::Instruction(blockid, index));
+            }
+            Ir51::Load { dest, .. } => {
+                self.check_usage(*dest, UseLocation::Instruction(blockid, index));
+            }
+            Ir51::BranchIf { cond, .. } => {
+                self.check_usage(*cond, UseLocation::Instruction(blockid, index));
+            }
             Ir51::BinOp { dest, .. } => {
-                self.check_usage(*dest, UseLocation::Instruction(index));
+                self.check_usage(*dest, UseLocation::Instruction(blockid, index));
             }
 
+            Ir51::Store { .. } => {}
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
@@ -205,7 +218,7 @@ impl DeadCodeElimination {
             }
 
             Operand::Address(_, _)
-            | Operand::Costant(_)
+            | Operand::Constant(_)
             | Operand::Temporary(_)
             | Operand::Register(_) => {
                 unreachable!("{dest:?}")
@@ -214,21 +227,18 @@ impl DeadCodeElimination {
     }
 
     // ========================= Phase 1 =========================
-    fn use_and_def_count(&mut self, cfg: &ControlFlowGraph) -> Option<()> {
+    fn use_and_def_count(&mut self, cfg: &ControlFlowGraph) {
         // TODO: Since scanning this way happens a lot (even in other passes) we probably
         // need to factor it out
         for block in cfg.blocks.values() {
-            block
-                .phis
-                .iter()
-                .enumerate()
-                .for_each(|(i, phi)| self.use_and_def_count_on_phi(phi, i, block.id));
+            for (i, phi) in block.phis.iter().enumerate() {
+                self.use_and_def_count_on_phi(phi, i, block.id);
+            }
 
-            let ir_range = block.ir_range.clone();
-            ir_range.for_each(|i| self.use_and_def_count_on_ir(&cfg.ir_code[i], i));
+            for (i, ir) in block.irs.iter().enumerate() {
+                self.use_and_def_count_on_ir(ir, i, block.id);
+            }
         }
-
-        Some(())
     }
 
     fn use_and_def_count_on_phi(&mut self, phi: &Phi, phi_index: usize, blockid: BlockId) {
@@ -239,7 +249,7 @@ impl DeadCodeElimination {
         self.save_def(&phi.operand, UseLocation::Phi(blockid, phi_index));
 
         for incoming in phi.incoming.values() {
-            if matches!(incoming, Operand::Costant(_)) {
+            if matches!(incoming, Operand::Constant(_)) {
                 continue;
             }
 
@@ -252,14 +262,14 @@ impl DeadCodeElimination {
         }
     }
 
-    fn use_and_def_count_on_ir(&mut self, ir: &Ir51, ir_index: usize) {
+    fn use_and_def_count_on_ir(&mut self, ir: &Ir51, ir_index: usize, blockid: BlockId) {
         match ir {
             Ir51::Move { dest, src } => {
-                self.save_def(dest, UseLocation::Instruction(ir_index));
+                self.save_def(dest, UseLocation::Instruction(blockid, ir_index));
                 self.use_count_on_operand(src);
             }
             Ir51::BinOp { dest, lhs, rhs, .. } => {
-                self.save_def(dest, UseLocation::Instruction(ir_index));
+                self.save_def(dest, UseLocation::Instruction(blockid, ir_index));
                 self.use_count_on_operand(lhs);
                 self.use_count_on_operand(rhs);
             }
@@ -273,7 +283,7 @@ impl DeadCodeElimination {
             // TODO: We probably have to check the space, because if it isnt' iData there
             // could be side-effect, in that chase we don't wanna remove this ir
             Ir51::Load { dest, src_ptr, .. } => {
-                self.save_def(dest, UseLocation::Instruction(ir_index));
+                self.save_def(dest, UseLocation::Instruction(blockid, ir_index));
                 self.use_count_on_operand(src_ptr);
             }
 
@@ -295,7 +305,7 @@ impl DeadCodeElimination {
                 self.temporary_defs.insert((*index, *version), loc);
             }
 
-            Operand::Costant(_) => {}
+            Operand::Constant(_) => {}
             Operand::Address(_, _) | Operand::Register(_) | Operand::Temporary(_) => unreachable!(),
         }
     }
@@ -316,7 +326,7 @@ impl DeadCodeElimination {
                     .or_insert(1);
             }
 
-            Operand::Costant(_) => {}
+            Operand::Constant(_) => {}
             Operand::Register(_) | Operand::Temporary(_) | Operand::Address(_, _) => unreachable!(),
         }
     }

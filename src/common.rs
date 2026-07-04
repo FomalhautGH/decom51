@@ -55,7 +55,7 @@ pub type TempIndex = usize;
 pub enum Operand {
     Register(Register),
 
-    Costant(Constant),
+    Constant(Constant),
 
     Temporary(TempIndex),
     TempSSAVar { index: TempIndex, version: Version },
@@ -71,7 +71,7 @@ impl Operand {
             Operand::TempSSAVar { version, .. } => *version,
 
             Operand::Register(_)
-            | Operand::Costant(_)
+            | Operand::Constant(_)
             | Operand::Temporary(_)
             | Operand::Address(_, _) => unreachable!("{self:?}"),
         }

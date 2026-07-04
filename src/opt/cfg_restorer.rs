@@ -1,40 +1,20 @@
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    ops::Range,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::common::{BlockId, Ir51, Phi};
 
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
-    pub ir_range: Range<usize>,
+    pub irs: Vec<Ir51>,
     pub successors: Vec<BlockId>,
     pub predecessors: Vec<BlockId>,
     pub phis: Vec<Phi>,
-}
-
-impl BasicBlock {
-    pub fn find_blockid_where(blocks: &[BasicBlock], index: usize) -> BlockId {
-        blocks
-            .binary_search_by(|b| {
-                if b.ir_range.contains(&index) {
-                    Ordering::Equal
-                } else {
-                    b.ir_range.start.cmp(&index)
-                }
-            })
-            .map(|i| blocks[i].id)
-            .unwrap_or_else(|_| unreachable!("Didnt find block with {index} inside."))
-    }
 }
 
 pub type HashBlocks = HashMap<BlockId, BasicBlock>;
 
 #[derive(Debug)]
 pub struct ControlFlowGraph {
-    pub ir_code: Vec<Ir51>,
     pub blocks: HashBlocks,
     pub start_block: BlockId,
 }
@@ -47,7 +27,7 @@ impl CFGRestorer {
         let leaders = CFGRestorer::find_leaders(ir_code);
         let mut blocks = CFGRestorer::create_blocks(ir_code, &leaders);
 
-        CFGRestorer::fill_successors(&mut blocks, ir_code);
+        CFGRestorer::fill_successors(&mut blocks, &leaders);
         CFGRestorer::fill_predecessors(&mut blocks);
 
         let blocks = blocks.into_iter().map(|b| (b.id, b)).collect();
@@ -60,7 +40,6 @@ impl CFGRestorer {
         }
 
         ControlFlowGraph {
-            ir_code: ir_code.to_vec(),
             blocks,
             start_block: 0, // TODO: to change in the future cuz the main doesn't always start at block 0
         }
@@ -75,10 +54,10 @@ impl CFGRestorer {
         }
     }
 
-    fn fill_successors(blocks: &mut [BasicBlock], ir_code: &mut [Ir51]) {
-        for i in 0..blocks.len() {
-            let end = blocks[i].ir_range.end - 1;
-            let last_instr = ir_code.get_mut(end).unwrap();
+    fn fill_successors(blocks: &mut [BasicBlock], leaders: &[usize]) {
+        let num_blocks = blocks.len();
+        for i in 0..num_blocks {
+            let last_instr = blocks[i].irs.last_mut().unwrap();
 
             match last_instr {
                 Ir51::BranchIf {
@@ -86,14 +65,14 @@ impl CFGRestorer {
                     false_jmp,
                     ..
                 } => {
-                    *true_jmp = BasicBlock::find_blockid_where(blocks, *true_jmp);
-                    *false_jmp = BasicBlock::find_blockid_where(blocks, *false_jmp);
+                    *true_jmp = CFGRestorer::find_block_id(leaders, *true_jmp);
+                    *false_jmp = CFGRestorer::find_block_id(leaders, *false_jmp);
                     blocks[i].successors.push(*true_jmp);
                     blocks[i].successors.push(*false_jmp);
                 }
 
                 Ir51::Jump(whr) => {
-                    *whr = BasicBlock::find_blockid_where(blocks, *whr);
+                    *whr = CFGRestorer::find_block_id(leaders, *whr);
                     blocks[i].successors.push(*whr);
                 }
 
@@ -104,10 +83,8 @@ impl CFGRestorer {
                 | Ir51::Call(_)
                 | Ir51::Nop
                 | Ir51::Return => {
-                    if i != blocks.len() - 1 {
-                        blocks[i]
-                            .successors
-                            .push(BasicBlock::find_blockid_where(blocks, end + 1));
+                    if i != num_blocks - 1 {
+                        blocks[i].successors.push(i + 1);
                     }
                 }
 
@@ -126,7 +103,7 @@ impl CFGRestorer {
 
             blocks.push(BasicBlock {
                 id: i,
-                ir_range: start..end,
+                irs: ir_code[start..end].to_vec(),
                 successors: Vec::new(),
                 predecessors: Vec::new(),
                 phis: Vec::new(),
@@ -138,7 +115,7 @@ impl CFGRestorer {
         // All remaining irs go to the last block
         let last_block = BasicBlock {
             id: leaders.len() - 1,
-            ir_range: *last_leader..ir_code.len(),
+            irs: ir_code[*last_leader..].to_vec(),
             successors: Vec::new(),
             predecessors: Vec::new(),
             phis: Vec::new(),
@@ -192,5 +169,16 @@ impl CFGRestorer {
         leaders.sort();
 
         leaders
+    }
+
+    // User leaders to find which block index is a part of
+    fn find_block_id(leaders: &[usize], index: usize) -> BlockId {
+        // The Err case works because it gives you the index of the element that is greater
+        // than the one it wants to find, so the index is inside the block with
+        // that leader - 1
+        match leaders.binary_search(&index) {
+            Ok(idx) => idx,
+            Err(idx) => idx - 1,
+        }
     }
 }

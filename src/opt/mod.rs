@@ -1,8 +1,12 @@
 use crate::{
     common::Ir51,
     opt::{
-        cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
-        dce::DeadCodeElimination, rewriter::Rewriter, ssa::SSABuilder,
+        cfg_restorer::{BasicBlock, CFGRestorer},
+        const_propagation::ConstPropagation,
+        dbe::DeadBlockElimination,
+        dce::DeadCodeElimination,
+        rewriter::Rewriter,
+        ssa::SSABuilder,
     },
 };
 
@@ -33,8 +37,5 @@ impl Optimizer {
 
         let mut dce = DeadCodeElimination::default();
         dce.execute(&mut cfg);
-
-        // TODO: clean up the Nops by maybe change how blocks are linked to irs (ranges are a mess
-        // to manage when removing ir instructions)
     }
 }

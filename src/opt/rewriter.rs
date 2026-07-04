@@ -21,14 +21,17 @@ impl<'a> Rewriter<'a> {
 
     pub fn rewrite(&self, cfg: &mut ControlFlowGraph) {
         for block in cfg.blocks.values_mut() {
-            self.rewrite_block(block, &mut cfg.ir_code);
+            self.rewrite_block(block);
         }
 
         if cfg!(debug_assertions) {
             println!("======================== IR CODE AFTER REWRITE ========================");
             println!("Irs: ");
-            for (i, ir) in cfg.ir_code.iter().enumerate() {
-                println!("{i}: {ir:?}")
+            for block in cfg.blocks.values() {
+                println!("Block {}:", block.id);
+                for (i, ir) in block.irs.iter().enumerate() {
+                    println!("  {i}: {ir:?}")
+                }
             }
 
             println!("Phis per block: ");
@@ -50,15 +53,9 @@ impl<'a> Rewriter<'a> {
         }
     }
 
-    fn rewrite_block(&self, block: &mut BasicBlock, ir_code: &mut [Ir51]) -> Option<()> {
+    fn rewrite_block(&self, block: &mut BasicBlock) {
         block.phis.iter_mut().for_each(|phi| self.rewrite_phi(phi));
-
-        // TODO: Maybe clean up these 3 operations i do often?
-        let ir_range = block.ir_range.clone();
-        let ir_code = ir_code.get_mut(ir_range)?;
-        ir_code.iter_mut().for_each(|ir| self.rewrite_ir(ir));
-
-        Some(())
+        block.irs.iter_mut().for_each(|ir| self.rewrite_ir(ir));
     }
 
     fn rewrite_phi(&self, phi: &mut Phi) {
@@ -78,7 +75,7 @@ impl<'a> Rewriter<'a> {
                 if let Some(v) = self.get_constant(dest) {
                     *ir = Ir51::Move {
                         dest: *dest,
-                        src: Operand::Costant(v),
+                        src: Operand::Constant(v),
                     };
                 }
             }
@@ -118,17 +115,17 @@ impl<'a> Rewriter<'a> {
             Operand::SSAVar { addr, version } => {
                 let state = self.known_values[&(*addr, *version)];
                 if let SSAState::Constant(v) = state {
-                    *operand = Operand::Costant(v);
+                    *operand = Operand::Constant(v);
                 }
             }
             Operand::TempSSAVar { index, version } => {
                 let state = self.known_temps[&(*index, *version)];
                 if let SSAState::Constant(v) = state {
-                    *operand = Operand::Costant(v);
+                    *operand = Operand::Constant(v);
                 }
             }
 
-            Operand::Costant(_) => {}
+            Operand::Constant(_) => {}
             Operand::Register(_) | Operand::Temporary(_) | Operand::Address(_, _) => unreachable!(),
         }
     }
@@ -154,7 +151,7 @@ impl<'a> Rewriter<'a> {
                 }
             }
 
-            Operand::Costant(v) => Some(*v),
+            Operand::Constant(v) => Some(*v),
             Operand::Register(_) | Operand::Temporary(_) | Operand::Address(_, _) => unreachable!(),
         }
     }

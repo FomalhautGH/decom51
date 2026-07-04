@@ -92,15 +92,13 @@ impl ConstPropagation {
     }
 
     fn init_defusechain(&mut self, cfg: &ControlFlowGraph) {
-        let ir_code = &cfg.ir_code;
         for block in cfg.blocks.values() {
             for (i, phi) in block.phis.iter().enumerate() {
                 self.insert_use_for_phi(phi, i, block.id);
             }
 
-            let ir_range = block.ir_range.clone();
-            for i in ir_range {
-                self.insert_use_for_ir(ir_code, i, block.id);
+            for (i, ir) in block.irs.iter().enumerate() {
+                self.insert_use_for_ir(ir, i, block.id);
             }
         }
     }
@@ -124,11 +122,9 @@ impl ConstPropagation {
         }
     }
 
-    fn insert_use_for_ir(&mut self, ir_code: &[Ir51], ir_index: usize, block_id: BlockId) {
-        let ir = &ir_code[ir_index];
-
+    fn insert_use_for_ir(&mut self, ir: &Ir51, ir_index: usize, block_id: BlockId) {
         let mut insert = |operand: &Operand| {
-            if let Operand::Costant(_) = operand {
+            if let Operand::Constant(_) = operand {
                 return;
             }
 
@@ -172,7 +168,10 @@ impl ConstPropagation {
             }
 
             match var_use {
-                UseLocation::Instruction(index) => self.elaborate_ir(&cfg.ir_code, index, block_id),
+                UseLocation::Instruction(index) => {
+                    let block = &cfg.blocks[&block_id];
+                    self.elaborate_ir(&block.irs, index, block_id)
+                }
                 UseLocation::Phi(index) => self.elaborate_phi(&cfg.blocks[&block_id], index),
             }
         }
@@ -213,20 +212,17 @@ impl ConstPropagation {
         // we come from) and if we already seen the 'to' block we don't re-propagate the ir
         self.propagate_phi(&to.phis);
         self.reachable_blocks.insert(to.id).then_some(())?;
-        self.propagate_ir(&cfg.ir_code, to);
+        self.propagate_ir(to);
 
         Some(())
     }
 
-    fn propagate_ir(&mut self, ir_code: &[Ir51], to: &BasicBlock) {
-        let ir_range = to.ir_range.clone();
-        let ir_code = &ir_code[ir_range];
-
+    fn propagate_ir(&mut self, to: &BasicBlock) {
         let mut is_last_jump = false;
 
         // The variable we assign to beign that this pass its executed just after the SSA
         // the destination variable is always Top (or Unknown)
-        for ir in ir_code {
+        for ir in &to.irs {
             match ir {
                 Ir51::Move { dest, src } => {
                     self.mov(dest, src);
@@ -285,7 +281,7 @@ impl ConstPropagation {
 
     fn mov(&mut self, dest: &Operand, src: &Operand) {
         match (dest, src) {
-            (dest, Operand::Costant(v)) => self.dest_to_state(dest, SSAState::Constant(*v)),
+            (dest, Operand::Constant(v)) => self.dest_to_state(dest, SSAState::Constant(*v)),
             (dest, src) => {
                 let src_state = self.get_operand_state(src);
                 if let SSAState::Top = src_state {
@@ -298,17 +294,17 @@ impl ConstPropagation {
 
     fn binop(&mut self, op: BinOp, dest: &Operand, lhs: &Operand, rhs: &Operand) {
         match (lhs, rhs) {
-            (Operand::Costant(x), Operand::Costant(y)) => {
+            (Operand::Constant(x), Operand::Constant(y)) => {
                 self.dest_to_binop_result(op, dest, *x, *y)
             }
 
-            (Operand::Costant(x), rhs) => match self.get_operand_state(rhs) {
+            (Operand::Constant(x), rhs) => match self.get_operand_state(rhs) {
                 SSAState::Bottom => self.dest_to_state(dest, SSAState::Bottom),
                 SSAState::Constant(y) => self.dest_to_binop_result(op, dest, *x, y),
                 SSAState::Top => {}
             },
 
-            (lhs, Operand::Costant(y)) => match self.get_operand_state(lhs) {
+            (lhs, Operand::Constant(y)) => match self.get_operand_state(lhs) {
                 SSAState::Bottom => self.dest_to_state(dest, SSAState::Bottom),
                 SSAState::Constant(x) => self.dest_to_binop_result(op, dest, x, *y),
                 SSAState::Top => {}
@@ -445,14 +441,9 @@ impl ConstPropagation {
 
     // ===================================== INIT Functions =====================================
     fn init_to_top(&mut self, cfg: &ControlFlowGraph) {
-        let ir_code = &cfg.ir_code;
         for block in cfg.blocks.values() {
-            let phis = &block.phis;
-            phis.iter().for_each(|phi| self.set_phi_top(phi));
-
-            let ir_range = block.ir_range.clone();
-            let irs = &ir_code[ir_range];
-            irs.iter().for_each(|ir| self.set_ir_top(ir));
+            block.phis.iter().for_each(|phi| self.set_phi_top(phi));
+            block.irs.iter().for_each(|ir| self.set_ir_top(ir));
         }
     }
 
@@ -517,7 +508,7 @@ impl ConstPropagation {
             }
 
             // We work on constant later
-            Operand::Costant(_) => None,
+            Operand::Constant(_) => None,
 
             Operand::Address(_, _) | Operand::Temporary(_) | Operand::Register(_) => {
                 unreachable!("{operand:?}")

@@ -43,7 +43,7 @@ impl SSABuilder {
         let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
         let immidiate_dominators = CHKAlgorithm::execute(&shared_blocks);
         let dominator_frontiers = Self::calculate_frontiers(&immidiate_dominators, &shared_blocks);
-        let variables = Self::find_variables(&shared_blocks, &cfg.ir_code);
+        let variables = Self::find_variables(&shared_blocks);
 
         Self::place_phis(&mut cfg.blocks, &dominator_frontiers, &variables);
         Self::ssa(cfg, &immidiate_dominators);
@@ -68,7 +68,7 @@ impl SSABuilder {
                 }
 
                 println!("Irs: ");
-                for (i, ir) in cfg.ir_code.get(block.ir_range.clone()).iter().enumerate() {
+                for (i, ir) in block.irs.iter().enumerate() {
                     println!("{i}: {ir:?}")
                 }
 
@@ -122,15 +122,9 @@ impl SSABuilder {
             .blocks
             .get_mut(&block_id)
             .expect("Non existent block for some reason");
-        let ir_range = block.ir_range.clone();
 
         Self::rewrite_phis_with_versions(block, stack, version_counter, &mut locals_vars);
-        Self::rewrite_irs_with_versions(
-            &mut cfg.ir_code[ir_range],
-            stack,
-            version_counter,
-            &mut locals_vars,
-        );
+        Self::rewrite_irs_with_versions(&mut block.irs, stack, version_counter, &mut locals_vars);
         Self::fill_incomings_in_successors(block_id, cfg, stack);
 
         // Push for when we exit this block
@@ -149,12 +143,14 @@ impl SSABuilder {
         cfg: &mut ControlFlowGraph,
         stack: &VersionStack,
     ) {
-        let block = cfg
+        let successors = cfg
             .blocks
-            .get_mut(&block_id)
-            .expect("Non existent block for some reason");
+            .get(&block_id)
+            .expect("Non existent block for some reason")
+            .successors
+            .clone();
 
-        for suc in block.successors.clone() {
+        for suc in successors {
             let phis = &mut cfg
                 .blocks
                 .get_mut(&suc)
@@ -306,7 +302,7 @@ impl SSABuilder {
             Operand::Address(_, _) => todo!(),
 
             Operand::Register(_)
-            | Operand::Costant(_)
+            | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. } => *op,
         }
@@ -355,7 +351,7 @@ impl SSABuilder {
             Operand::Address(_, _) => todo!(),
 
             Operand::Register(_)
-            | Operand::Costant(_)
+            | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. } => *op,
         }
@@ -416,7 +412,7 @@ impl SSABuilder {
 
     // TODO: To get a better version of this is to find where a variabile is read in order to avoid
     // placing a phi if a variable is not read in the frontiers
-    fn find_variables(blocks: &[&BasicBlock], ir: &[Ir51]) -> VarsBlocks {
+    fn find_variables(blocks: &[&BasicBlock]) -> VarsBlocks {
         let mut vars: VarsBlocks = HashMap::new();
 
         for b in blocks {
@@ -424,10 +420,8 @@ impl SSABuilder {
                 vars.entry(key).or_default().insert(b.id);
             };
 
-            for i in b.ir_range.clone() {
-                let ir = ir[i];
-
-                match ir {
+            for ir in &b.irs {
+                match *ir {
                     // Addresses
                     Ir51::Move {
                         dest: Operand::Address(addr, _),
