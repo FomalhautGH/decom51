@@ -1,7 +1,4 @@
-use std::{
-    fs::File,
-    io::{self, Read},
-};
+use std::io;
 
 use crate::common::Register;
 

@@ -62,10 +62,6 @@ impl<'a> Rewriter<'a> {
     }
 
     fn rewrite_phi(&self, phi: &mut Phi) {
-        let Operand::SSAVar { addr, version } = phi.operand else {
-            unreachable!()
-        };
-
         for (_, incoming) in phi.incoming.iter_mut() {
             self.rewrite_operand(incoming)
         }
@@ -75,8 +71,8 @@ impl<'a> Rewriter<'a> {
 
     fn rewrite_ir(&self, ir: &mut Ir51) {
         match ir {
-            Ir51::Move { dest, src } => self.rewrite_operand(src),
-            Ir51::BinOp { op, dest, lhs, rhs } => {
+            Ir51::Move { src, .. } => self.rewrite_operand(src),
+            Ir51::BinOp { dest, lhs, rhs, .. } => {
                 self.rewrite_operand(lhs);
                 self.rewrite_operand(rhs);
                 if let Some(v) = self.get_constant(dest) {
@@ -87,18 +83,18 @@ impl<'a> Rewriter<'a> {
                 }
             }
             Ir51::Store {
-                space,
                 dest_ptr,
                 value,
+                ..
             } => {
                 self.rewrite_operand(dest_ptr);
                 self.rewrite_operand(value);
             }
 
             Ir51::Load {
-                space,
                 dest,
                 src_ptr,
+                ..
             } => {
                 self.rewrite_operand(dest);
                 self.rewrite_operand(src_ptr);

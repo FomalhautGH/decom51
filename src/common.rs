@@ -67,8 +67,8 @@ pub enum Operand {
 impl Operand {
     pub fn extract_ssa_version(&self) -> Version {
         match self {
-            Operand::SSAVar { addr, version } => *version,
-            Operand::TempSSAVar { index, version } => *version,
+            Operand::SSAVar { version, .. } => *version,
+            Operand::TempSSAVar { version, .. } => *version,
 
             Operand::Register(_)
             | Operand::Costant(_)

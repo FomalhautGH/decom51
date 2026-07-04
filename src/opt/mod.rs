@@ -8,6 +8,7 @@ use crate::{
 
 mod cfg_restorer;
 mod const_propagation;
+mod dbe;
 mod dce;
 mod rewriter;
 mod ssa;
@@ -24,10 +25,10 @@ impl Optimizer {
         const_prop.execute(&cfg);
         let (known_values, known_temps) = (&const_prop.known_values, &const_prop.known_temps);
 
-        let mut rewriter = Rewriter::new(known_values, known_temps);
+        let rewriter = Rewriter::new(known_values, known_temps);
         rewriter.rewrite(&mut cfg);
 
-        let mut dce = DeadCodeElimination::default(&cfg);
+        let mut dce = DeadCodeElimination::default();
         dce.dce(&mut cfg);
     }
 }

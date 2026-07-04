@@ -5,7 +5,7 @@ use crate::{
         const_propagation::{SSAVar, TempSSAVar},
     },
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 enum UseLocation {
@@ -25,7 +25,6 @@ type TemporaryDefs = HashMap<TempSSAVar, UseLocation>;
 
 #[derive(Default)]
 pub struct DeadCodeElimination {
-    ordered_cfg_blocks: Vec<BasicBlock>,
     variable_uses: VariableUses,
     temporary_uses: TemporaryUses,
     variable_defs: VariableDefs,
@@ -34,18 +33,6 @@ pub struct DeadCodeElimination {
 }
 
 impl DeadCodeElimination {
-    pub fn default(cfg: &ControlFlowGraph) -> Self {
-        // TODO: Remove the clone here (probably have to change the ControlFlowGraph/BasicBlock structure)
-        // since it is very inefficent, i put this in the constructor to be a little more efficent
-        let mut blocks: Vec<BasicBlock> = cfg.blocks.values().cloned().collect();
-        blocks.sort_by(|ba, bb| ba.id.cmp(&bb.id));
-
-        Self {
-            ordered_cfg_blocks: blocks,
-            ..Default::default()
-        }
-    }
-
     pub fn dce(&mut self, cfg: &mut ControlFlowGraph) {
         self.use_and_def_count(cfg).unwrap(); // Phase 1: Calculates how many times a variable/temp is used
         self.scan_irs(cfg); // Phase 2: Look at all the destinations of the ir instructions
@@ -82,35 +69,23 @@ impl DeadCodeElimination {
     }
 
     fn delete_instruction(&mut self, cfg: &mut ControlFlowGraph, index: usize) {
-        let blockid = BasicBlock::find_blockid_where(&self.ordered_cfg_blocks, index);
-
         match &cfg.ir_code[index] {
-            Ir51::Move { dest, src } => self.use_count_subtract(src, index),
-            Ir51::BinOp { op, dest, lhs, rhs } => {
-                self.use_count_subtract(lhs, index);
-                self.use_count_subtract(rhs, index);
+            Ir51::Move { src, .. } => self.use_count_subtract(src),
+            Ir51::BinOp { lhs, rhs, .. } => {
+                self.use_count_subtract(lhs);
+                self.use_count_subtract(rhs);
             }
 
             Ir51::Store {
-                space,
-                dest_ptr,
-                value,
+                dest_ptr, value, ..
             } => {
-                self.use_count_subtract(dest_ptr, index);
-                self.use_count_subtract(value, index);
+                self.use_count_subtract(dest_ptr);
+                self.use_count_subtract(value);
             }
 
-            Ir51::Load {
-                space,
-                dest,
-                src_ptr,
-            } => self.use_count_subtract(src_ptr, index),
+            Ir51::Load { src_ptr, .. } => self.use_count_subtract(src_ptr),
 
-            Ir51::BranchIf {
-                cond,
-                true_jmp,
-                false_jmp,
-            } => self.use_count_subtract(cond, index),
+            Ir51::BranchIf { cond, .. } => self.use_count_subtract(cond),
 
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
@@ -119,17 +94,17 @@ impl DeadCodeElimination {
         cfg.ir_code[index] = Ir51::Nop;
     }
 
-    fn use_count_subtract(&mut self, operand: &Operand, index: usize) {
+    fn use_count_subtract(&mut self, operand: &Operand) {
         match operand {
             Operand::SSAVar { addr, version } => {
                 let key = (*addr, *version);
 
                 self.variable_uses.entry(key).and_modify(|counter| {
                     *counter -= 1;
-                    if *counter == 0 {
-                        if let Some(def_loc) = self.variable_defs.get(&key) { 
-                            self.dead_instructions.push(*def_loc);
-                        }
+                    if let Some(def_loc) = self.variable_defs.get(&key)
+                        && *counter == 0
+                    {
+                        self.dead_instructions.push(*def_loc);
                     }
                 });
             }
@@ -142,10 +117,10 @@ impl DeadCodeElimination {
 
                 self.temporary_uses.entry(key).and_modify(|counter| {
                     *counter -= 1;
-                    if *counter == 0 {
-                        if let Some(def_loc) = self.temporary_defs.get(&key) { 
-                            self.dead_instructions.push(*def_loc);
-                        }
+                    if let Some(def_loc) = self.temporary_defs.get(&key)
+                        && *counter == 0
+                    {
+                        self.dead_instructions.push(*def_loc);
                     }
                 });
             }
@@ -172,7 +147,7 @@ impl DeadCodeElimination {
                 version: incoming.extract_ssa_version(),
             };
 
-            let operand = self.use_count_subtract(&operand, index);
+            self.use_count_subtract(&operand);
         }
 
         // TODO: Change this to non valid operand
@@ -201,28 +176,13 @@ impl DeadCodeElimination {
 
     fn scan_ir(&mut self, ir: &Ir51, index: usize) {
         match ir {
-            Ir51::Move { dest, src } => self.check_usage(*dest, UseLocation::Instruction(index)),
-            Ir51::BinOp { op, dest, lhs, rhs } => {
+            Ir51::Move { dest, .. } => self.check_usage(*dest, UseLocation::Instruction(index)),
+            Ir51::Load { dest, .. } => self.check_usage(*dest, UseLocation::Instruction(index)),
+            Ir51::BranchIf { cond, .. } => self.check_usage(*cond, UseLocation::Instruction(index)),
+            Ir51::Store { .. } => {}
+            Ir51::BinOp { dest, .. } => {
                 self.check_usage(*dest, UseLocation::Instruction(index));
             }
-
-            Ir51::Store {
-                space,
-                dest_ptr,
-                value,
-            } => {}
-
-            Ir51::Load {
-                space,
-                dest,
-                src_ptr,
-            } => self.check_usage(*dest, UseLocation::Instruction(index)),
-
-            Ir51::BranchIf {
-                cond,
-                true_jmp,
-                false_jmp,
-            } => self.check_usage(*cond, UseLocation::Instruction(index)),
 
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
@@ -232,12 +192,13 @@ impl DeadCodeElimination {
     fn check_usage(&mut self, dest: Operand, loc: UseLocation) {
         match dest {
             Operand::SSAVar { addr, version } => {
-                if self.variable_uses.get(&(addr, version)).is_none() {
+                if !self.variable_uses.contains_key(&(addr, version)) {
                     self.dead_instructions.push(loc);
                 }
             }
+
             Operand::TempSSAVar { index, version } => {
-                if self.temporary_uses.get(&(index, version)).is_none() {
+                if !self.temporary_uses.contains_key(&(index, version)) {
                     self.dead_instructions.push(loc);
                 }
             }
@@ -287,7 +248,7 @@ impl DeadCodeElimination {
                 version: incoming.extract_ssa_version(),
             };
 
-            let operand = self.use_count_on_operand(&operand);
+            self.use_count_on_operand(&operand);
         }
     }
 
@@ -297,15 +258,15 @@ impl DeadCodeElimination {
                 self.save_def(dest, UseLocation::Instruction(ir_index));
                 self.use_count_on_operand(src);
             }
-            Ir51::BinOp { op, dest, lhs, rhs } => {
+            Ir51::BinOp { dest, lhs, rhs, .. } => {
                 self.save_def(dest, UseLocation::Instruction(ir_index));
                 self.use_count_on_operand(lhs);
                 self.use_count_on_operand(rhs);
             }
             Ir51::Store {
-                space,
                 dest_ptr,
                 value,
+                ..
             } => {
                 self.use_count_on_operand(dest_ptr);
                 self.use_count_on_operand(value);
@@ -314,9 +275,9 @@ impl DeadCodeElimination {
             // TODO: We probably have to check the space, because if it isnt' iData there
             // could be side-effect, in that chase we don't wanna remove this ir
             Ir51::Load {
-                space,
                 dest,
                 src_ptr,
+                ..
             } => {
                 self.save_def(dest, UseLocation::Instruction(ir_index));
                 self.use_count_on_operand(src_ptr);
@@ -324,8 +285,7 @@ impl DeadCodeElimination {
 
             Ir51::BranchIf {
                 cond,
-                true_jmp,
-                false_jmp,
+                ..
             } => self.use_count_on_operand(cond),
 
             Ir51::Nop => {}
