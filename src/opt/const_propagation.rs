@@ -6,8 +6,8 @@ use crate::{
 };
 
 // TODO: Might move these in common.rs or something
-type SSAVar = (Addr, Version);
-type TempSSAVar = (TempIndex, Version);
+pub type SSAVar = (Addr, Version);
+pub type TempSSAVar = (TempIndex, Version);
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum Either {
@@ -26,10 +26,10 @@ pub enum SSAState {
 }
 
 // This type represent for every variable and version its SSAState
-pub type VariableValues = HashMap<SSAVar, SSAState>;
+pub type VariableStates = HashMap<SSAVar, SSAState>;
 
 // This represent the same thing but for Temporary variables
-pub type TemporaryValues = HashMap<TempSSAVar, SSAState>;
+pub type TemporaryStates = HashMap<TempSSAVar, SSAState>;
 
 // Represents the blocks we have to visit by the predecessor and the successor
 type BlockQueue = Vec<(BlockId, BlockId)>;
@@ -59,8 +59,8 @@ enum UseLocation {
 // https://en.wikipedia.org/wiki/Sparse_conditional_constant_propagation
 #[derive(Default)]
 pub struct ConstPropagation {
-    pub known_values: VariableValues,
-    pub known_temps: TemporaryValues,
+    pub known_values: VariableStates,
+    pub known_temps: TemporaryStates,
     block_queue: BlockQueue,
     ssa_queue: SSAQueue,
     defuse_chain: DefUseChain,
@@ -157,7 +157,7 @@ impl ConstPropagation {
             Ir51::Load { src_ptr, .. } => insert(src_ptr),
             Ir51::BranchIf { cond, .. } => insert(cond),
 
-            Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
+            Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
@@ -199,7 +199,7 @@ impl ConstPropagation {
             Ir51::Store { .. } => todo!(),
             Ir51::Load { .. } => todo!(),
 
-            Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
+            Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
@@ -255,7 +255,7 @@ impl ConstPropagation {
                     is_last_jump = true;
                 }
 
-                Ir51::Call(_) | Ir51::Return => is_last_jump = false,
+                Ir51::Nop | Ir51::Call(_) | Ir51::Return => is_last_jump = false,
                 Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
             }
         }
@@ -502,7 +502,7 @@ impl ConstPropagation {
                 self.operand_to_top(cond);
             }
 
-            Ir51::Call(_) | Ir51::Return | Ir51::Jump(_) => {}
+            Ir51::Nop | Ir51::Call(_) | Ir51::Return | Ir51::Jump(_) => {}
             Ir51::InvalidIr => unreachable!("Invalid IR touched"),
         }
     }

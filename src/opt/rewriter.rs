@@ -2,17 +2,17 @@ use crate::{
     common::{Constant, Ir51, Operand, Phi},
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
-        const_propagation::{SSAState, TemporaryValues, VariableValues},
+        const_propagation::{SSAState, TemporaryStates, VariableStates},
     },
 };
 
 pub struct Rewriter<'a> {
-    known_values: &'a VariableValues,
-    known_temps: &'a TemporaryValues,
+    known_values: &'a VariableStates,
+    known_temps: &'a TemporaryStates,
 }
 
 impl<'a> Rewriter<'a> {
-    pub fn new(known_values: &'a VariableValues, known_temps: &'a TemporaryValues) -> Self {
+    pub fn new(known_values: &'a VariableStates, known_temps: &'a TemporaryStates) -> Self {
         Self {
             known_values,
             known_temps,
@@ -117,6 +117,7 @@ impl<'a> Rewriter<'a> {
                 }
             }
 
+            Ir51::Nop => {}
             Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
@@ -141,6 +142,8 @@ impl<'a> Rewriter<'a> {
             Operand::Register(_) | Operand::Temporary(_) | Operand::Address(_, _) => unreachable!(),
         }
     }
+
+    // TODO: unite these two functions somehow
 
     fn get_constant(&self, operand: &Operand) -> Option<Constant> {
         match operand {

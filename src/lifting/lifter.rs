@@ -132,6 +132,7 @@ impl Lifter {
                 Ir51::Load { .. } => {}
                 Ir51::Call(_) => {}
                 Ir51::Return => {}
+                Ir51::Nop => {}
                 Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }

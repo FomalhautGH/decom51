@@ -274,6 +274,7 @@ impl SSABuilder {
             Ir51::Jump(tgt) => Ir51::Jump(tgt),
             Ir51::Call(tgt) => Ir51::Call(tgt),
             Ir51::Return => Ir51::Return,
+            Ir51::Nop => Ir51::Nop,
             Ir51::InvalidIr => unreachable!("Invalid IR touched"),
         }
     }
@@ -463,6 +464,7 @@ impl SSABuilder {
                     Ir51::Jump(_) => {}
                     Ir51::Call(_) => {}
                     Ir51::Return => {}
+                    Ir51::Nop => {}
 
                     Ir51::InvalidIr => unreachable!("Invalid IR touched"),
                 };

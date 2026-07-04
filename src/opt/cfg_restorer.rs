@@ -6,13 +6,28 @@ use std::{
 
 use crate::common::{BlockId, Ir51, Phi};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
     pub ir_range: Range<usize>,
     pub successors: Vec<BlockId>,
     pub predecessors: Vec<BlockId>,
     pub phis: Vec<Phi>,
+}
+
+impl BasicBlock {
+    pub fn find_blockid_where(blocks: &[BasicBlock], index: usize) -> BlockId {
+        blocks
+            .binary_search_by(|b| {
+                if b.ir_range.contains(&index) {
+                    Ordering::Equal
+                } else {
+                    b.ir_range.start.cmp(&index)
+                }
+            })
+            .map(|i| blocks[i].id)
+            .unwrap_or_else(|_| unreachable!("Didnt find block with {index} inside."))
+    }
 }
 
 pub type HashBlocks = HashMap<BlockId, BasicBlock>;
@@ -71,14 +86,14 @@ impl CFGRestorer {
                     false_jmp,
                     ..
                 } => {
-                    *true_jmp = CFGRestorer::index_to_blockid(blocks, *true_jmp);
-                    *false_jmp = CFGRestorer::index_to_blockid(blocks, *false_jmp);
+                    *true_jmp = BasicBlock::find_blockid_where(blocks, *true_jmp);
+                    *false_jmp = BasicBlock::find_blockid_where(blocks, *false_jmp);
                     blocks[i].successors.push(*true_jmp);
                     blocks[i].successors.push(*false_jmp);
                 }
 
                 Ir51::Jump(whr) => {
-                    *whr = CFGRestorer::index_to_blockid(blocks, *whr);
+                    *whr = BasicBlock::find_blockid_where(blocks, *whr);
                     blocks[i].successors.push(*whr);
                 }
 
@@ -87,30 +102,18 @@ impl CFGRestorer {
                 | Ir51::Store { .. }
                 | Ir51::Load { .. }
                 | Ir51::Call(_)
+                | Ir51::Nop
                 | Ir51::Return => {
                     if i != blocks.len() - 1 {
                         blocks[i]
                             .successors
-                            .push(CFGRestorer::index_to_blockid(blocks, end + 1));
+                            .push(BasicBlock::find_blockid_where(blocks, end + 1));
                     }
                 }
 
                 Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }
-    }
-
-    fn index_to_blockid(blocks: &[BasicBlock], index: usize) -> usize {
-        blocks
-            .binary_search_by(|b| {
-                if b.ir_range.contains(&index) {
-                    Ordering::Equal
-                } else {
-                    b.ir_range.start.cmp(&index)
-                }
-            })
-            .map(|i| blocks[i].id)
-            .unwrap_or_else(|_| unreachable!("Didnt find block with {index} inside."))
     }
 
     fn create_blocks(ir_code: &[Ir51], leaders: &[usize]) -> Vec<BasicBlock> {
@@ -174,12 +177,13 @@ impl CFGRestorer {
                     after_jump = true;
                 }
 
-                Ir51::Move { .. } => {}
-                Ir51::BinOp { .. } => {}
-                Ir51::Store { .. } => {}
-                Ir51::Load { .. } => {}
-                Ir51::Call(_) => {}
-                Ir51::Return => {}
+                Ir51::Move { .. }
+                | Ir51::BinOp { .. }
+                | Ir51::Store { .. }
+                | Ir51::Load { .. }
+                | Ir51::Call(_)
+                | Ir51::Return
+                | Ir51::Nop => {}
                 Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             };
         }

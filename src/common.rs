@@ -73,7 +73,7 @@ impl Operand {
             Operand::Register(_)
             | Operand::Costant(_)
             | Operand::Temporary(_)
-            | Operand::Address(_, _) => unreachable!(),
+            | Operand::Address(_, _) => unreachable!("{self:?}"),
         }
     }
 }
@@ -128,6 +128,8 @@ pub enum Ir51 {
     Call(usize),
 
     Return,
+
+    Nop,
     InvalidIr,
 }
 
@@ -138,7 +140,7 @@ pub type BlockId = usize;
 // as in the operand. Edit: I changed to Operand insted for rewrite phase
 pub type Incoming = HashMap<BlockId, Operand>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Phi {
     pub operand: Operand,
     pub incoming: Incoming,

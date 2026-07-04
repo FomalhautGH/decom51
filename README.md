@@ -20,13 +20,13 @@ Transforms a flat list of instructions into a strict mathematical model where da
 - [x] **Dominance Analysis:** Calculates the Dominator Tree and Dominance Frontiers to understand the exact topological hierarchy of the code.
 - [x] **SSA (Static Single Assignment) Generation:** Assigns strict versioning to every variable mutation and algorithmically places Phi (Φ) nodes at control flow convergence points. Every variable is now written exactly once.
 
-### 🟡 Phase 3: Analysis & Optimization (In Progress)
+### 🟢 Phase 3: Analysis & Optimization (Completed)
 The "brain" of the decompiler. It simulates the program mathematically to discover absolute truths and simplifies the graph accordingly.
 - [x] **SCCP (Sparse Conditional Constant Propagation):** A complex dataflow analysis engine using Lattice Theory to track variables across the CFG, discovering absolute constants, predictable math, and unreachable branches.
 - [x] **IR Rewriter & Constant Folding:** A mutation pass that acts on the SCCP's findings. It physically replaces SSA variables with literal constants, pre-calculates mathematical operations, and converts static conditional branches (`BranchIf`) into direct `Jump`s.
-- [ ] **Dead Code Elimination (DCE):** The cleanup pass. It sweeps through Def-Use chains to remove "orphan" math operations (where the result is never read) and prunes entirely disconnected basic blocks left over from the Rewriter.
+- [x] **Dead Code Elimination (DCE):** The cleanup pass. It sweeps through Def-Use chains to remove "orphan" math operations (where the result is never read) and prunes entirely disconnected basic blocks left over from the Rewriter.
 
-### 🔴 Phase 4: Recovery & Aggregation (To Do)
+### 🟡 Phase 4: Recovery & Aggregation (In progress)
 The bridge between machine logic and human logic. It hides the SSA mechanics and rebuilds complex mathematical expressions.
 - [ ] **De-SSA & Variable Coalescing:** Performs *Liveness Analysis* and builds Interference Graphs to figure out which SSA versions can share the same memory space, collapsing dozens of versions (e.g., `R7_1`, `R7_2`) back into standard local C variables.
 - [ ] **Expression Aggregation:** Walks backward up the Def-Use chains to collapse vertical TAC instructions into horizontal, nested C expressions (transforming `t1 = a + b; t2 = t1 * c; res = t2;` directly into `res = (a + b) * c;`).
