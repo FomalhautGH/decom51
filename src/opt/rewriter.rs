@@ -59,7 +59,7 @@ impl<'a> Rewriter<'a> {
     }
 
     fn rewrite_phi(&self, phi: &mut Phi) {
-        for (_, incoming) in phi.incoming.iter_mut() {
+        for incoming in phi.incoming.values_mut() {
             self.rewrite_operand(incoming)
         }
 

@@ -1,12 +1,8 @@
 use crate::{
     common::Ir51,
     opt::{
-        cfg_restorer::{BasicBlock, CFGRestorer},
-        const_propagation::ConstPropagation,
-        dbe::DeadBlockElimination,
-        dce::DeadCodeElimination,
-        rewriter::Rewriter,
-        ssa::SSABuilder,
+        cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
+        dce::DeadCodeElimination, liveness::Liveness, rewriter::Rewriter, ssa::SSABuilder,
     },
 };
 
@@ -14,6 +10,7 @@ mod cfg_restorer;
 mod const_propagation;
 mod dbe;
 mod dce;
+mod liveness;
 mod rewriter;
 mod ssa;
 
@@ -37,5 +34,8 @@ impl Optimizer {
 
         let mut dce = DeadCodeElimination::default();
         dce.execute(&mut cfg);
+
+        let mut ln = Liveness::new(&cfg);
+        ln.analysis(&cfg);
     }
 }

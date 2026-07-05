@@ -1,13 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, TempIndex, Version},
+    common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, SSAVar, TempSSAVar},
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
-
-// TODO: Might move these in common.rs or something
-pub type SSAVar = (Addr, Version);
-pub type TempSSAVar = (TempIndex, Version);
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum Either {

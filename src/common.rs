@@ -137,7 +137,9 @@ pub type BlockId = usize;
 
 // This type represents the predecessor blocks where the SSAVar comes from,
 // SSAVar being represented by just its version since the address it's the same
-// as in the operand. Edit: I changed to Operand insted for rewrite phase
+// as in the operand. Edit: I changed to Operand insted for rewrite phase so
+// TODO: fix the places where i extract the versione form the operand if can already
+// take it from the incoming (do i still need phi.operand?)
 pub type Incoming = HashMap<BlockId, Operand>;
 
 #[derive(Debug, Clone)]
@@ -145,3 +147,6 @@ pub struct Phi {
     pub operand: Operand,
     pub incoming: Incoming,
 }
+
+pub type SSAVar = (Addr, Version);
+pub type TempSSAVar = (TempIndex, Version);

@@ -1,9 +1,6 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi},
-    opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
-        const_propagation::{SSAVar, TempSSAVar},
-    },
+    common::{BlockId, Ir51, Operand, Phi, SSAVar, TempSSAVar},
+    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 use std::collections::HashMap;
 
@@ -53,6 +50,9 @@ impl DeadCodeElimination {
             println!("======================== IR CODE CLEANED ========================");
             for block in cfg.blocks.values() {
                 println!("Block {}:", block.id);
+                for (i, phi) in block.phis.iter().enumerate() {
+                    println!("  {i}: {phi:?}")
+                }
                 for (i, ir) in block.irs.iter().enumerate() {
                     println!("  {i}: {ir:?}")
                 }
@@ -76,6 +76,9 @@ impl DeadCodeElimination {
         // Cleanup all the nops
         for block in cfg.blocks.values_mut() {
             block.irs.retain(|ir| !matches!(ir, Ir51::Nop));
+            block
+                .phis
+                .retain(|phi| !matches!(phi.operand, Operand::Constant(0)));
         }
     }
 

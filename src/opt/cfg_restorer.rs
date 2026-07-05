@@ -56,8 +56,9 @@ impl CFGRestorer {
 
     fn fill_successors(blocks: &mut [BasicBlock], leaders: &[usize]) {
         let num_blocks = blocks.len();
-        for i in 0..num_blocks {
-            let last_instr = blocks[i].irs.last_mut().unwrap();
+
+        for (i, block) in blocks.iter_mut().enumerate() {
+            let last_instr = block.irs.last_mut().unwrap();
 
             match last_instr {
                 Ir51::BranchIf {
@@ -67,13 +68,13 @@ impl CFGRestorer {
                 } => {
                     *true_jmp = CFGRestorer::find_block_id(leaders, *true_jmp);
                     *false_jmp = CFGRestorer::find_block_id(leaders, *false_jmp);
-                    blocks[i].successors.push(*true_jmp);
-                    blocks[i].successors.push(*false_jmp);
+                    block.successors.push(*true_jmp);
+                    block.successors.push(*false_jmp);
                 }
 
                 Ir51::Jump(whr) => {
                     *whr = CFGRestorer::find_block_id(leaders, *whr);
-                    blocks[i].successors.push(*whr);
+                    block.successors.push(*whr);
                 }
 
                 Ir51::Move { .. }
@@ -84,7 +85,7 @@ impl CFGRestorer {
                 | Ir51::Nop
                 | Ir51::Return => {
                     if i != num_blocks - 1 {
-                        blocks[i].successors.push(i + 1);
+                        block.successors.push(i + 1);
                     }
                 }
 
