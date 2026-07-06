@@ -2,7 +2,8 @@ use crate::{
     common::Ir51,
     opt::{
         cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
-        dce::DeadCodeElimination, liveness::Liveness, rewriter::Rewriter, ssa::SSABuilder,
+        dce::DeadCodeElimination, interference::Interference, liveness::Liveness,
+        rewriter::Rewriter, ssa::SSABuilder,
     },
 };
 
@@ -10,6 +11,7 @@ mod cfg_restorer;
 mod const_propagation;
 mod dbe;
 mod dce;
+mod interference;
 mod liveness;
 mod rewriter;
 mod ssa;
@@ -35,7 +37,13 @@ impl Optimizer {
         let mut dce = DeadCodeElimination::default();
         dce.execute(&mut cfg);
 
-        let mut ln = Liveness::new(&cfg);
-        ln.analysis(&cfg);
+        // TODO: Put de-ssa phases in a dedicated module and maybe put the cfg
+        // directly in the fields of the respective structs
+        let mut liveness = Liveness::new(&cfg);
+        liveness.analysis(&cfg);
+
+        let (in_sets, out_sets) = (&liveness.in_sets, &liveness.out_sets);
+        let mut interference = Interference::new(in_sets, out_sets);
+        interference.find(&cfg);
     }
 }

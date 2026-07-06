@@ -5,14 +5,14 @@ use crate::{
 use std::collections::{HashMap, HashSet};
 
 // Local set for every block
-type LocalSet = HashMap<BlockId, HashSet<SSAVar>>;
+pub type LocalSet = HashMap<BlockId, HashSet<SSAVar>>;
 
 #[derive(Default)]
 pub struct Liveness {
+    pub in_sets: LocalSet,
+    pub out_sets: LocalSet,
     use_sets: LocalSet,
     def_sets: LocalSet,
-    in_sets: LocalSet,
-    out_sets: LocalSet,
 }
 
 impl Liveness {
@@ -169,10 +169,7 @@ impl Liveness {
             Operand::SSAVar { addr, version } => {
                 let key = (*addr, *version);
 
-                let def = self
-                    .def_sets
-                    .get(&blockid)
-                    .is_some_and(|def_set| def_set.contains(&key));
+                let def = self.def_sets.entry(blockid).or_default().contains(&key);
 
                 if !def {
                     self.use_sets.entry(blockid).or_default().insert(key);

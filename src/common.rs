@@ -76,6 +76,15 @@ impl Operand {
             | Operand::Address(_, _) => unreachable!("{self:?}"),
         }
     }
+
+    // TODO: Check every place i could use this function in
+    pub fn op_to_ssavar(&self) -> SSAVar {
+        let Operand::SSAVar { addr, version } = *self else {
+            unreachable!("Invalid Operand to covert into SSAVar")
+        };
+
+        (addr, version)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -150,3 +159,8 @@ pub struct Phi {
 
 pub type SSAVar = (Addr, Version);
 pub type TempSSAVar = (TempIndex, Version);
+
+// TODO: Maybe is it bettere to have SSAVar as a struct and implement PartialOrd
+pub fn is_ssa_smaller(a: SSAVar, b: SSAVar) -> bool {
+    if a.0 == b.0 { a.1 < b.1 } else { a.0 < b.0 }
+}

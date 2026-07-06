@@ -83,7 +83,7 @@ impl SSABuilder {
     }
 
     // We need this function to map addresses to their respective SSAVar with the correct version
-    // (thanks to the stack) and increase the version number for that variable when we read from it
+    // (thanks to the stack) and increase the version number for that variable when we write it
     fn ssa(cfg: &mut ControlFlowGraph, idoms: &Dominators) {
         // Counts the versions for each variable
         let mut version_counter: VersionCounter = HashMap::new();
