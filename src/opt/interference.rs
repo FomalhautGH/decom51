@@ -17,15 +17,13 @@ use std::collections::HashSet;
 type InterferenceGraph = HashSet<(SSAVar, SSAVar)>;
 
 pub struct Interference<'a> {
-    in_sets: &'a LocalSet,
     out_sets: &'a LocalSet,
     interferences: InterferenceGraph,
 }
 
 impl<'a> Interference<'a> {
-    pub fn new(in_sets: &'a LocalSet, out_sets: &'a LocalSet) -> Self {
+    pub fn new(out_sets: &'a LocalSet) -> Self {
         Self {
-            in_sets,
             out_sets,
             interferences: HashSet::new(),
         }
@@ -60,12 +58,15 @@ impl<'a> Interference<'a> {
 
         // Since Phis happen "simultainously" all the destinations interfere with
         // each other
-        for i in &phi_destinations {
-            for j in &phi_destinations {
-                let i = i.op_to_ssavar();
-                let j = j.op_to_ssavar();
-                if is_ssa_smaller(i, j) {
-                    self.interferences.insert((i, j));
+        for i in 0..phi_destinations.len() {
+            for j in (i + 1)..phi_destinations.len() {
+                let ssavar1 = phi_destinations[i].to_ssavar();
+                let ssavar2 = phi_destinations[j].to_ssavar();
+
+                if is_ssa_smaller(ssavar1, ssavar2) {
+                    self.interferences.insert((ssavar1, ssavar2));
+                } else {
+                    self.interferences.insert((ssavar2, ssavar1));
                 }
             }
         }
@@ -134,16 +135,18 @@ impl<'a> Interference<'a> {
         // The liveset is a set that represents all the SSAVars than need
         // to live at the same moment, since we iterate the irs of the block
         // in reverse, at the start it needs to be the same as the out_set
-        let mut live_set = self.out_sets[&blockid].clone();
+        let liveset = self.out_sets[&blockid].clone();
 
-        for i in &live_set {
-            for j in &live_set {
+        // TODO: Try to improve this nesthed loops by doing less loops like
+        // the one in analyze_phis
+        for i in &liveset {
+            for j in &liveset {
                 if is_ssa_smaller(*i, *j) {
                     self.interferences.insert((*i, *j));
                 }
             }
         }
 
-        live_set
+        liveset
     }
 }

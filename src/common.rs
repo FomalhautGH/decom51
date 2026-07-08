@@ -78,8 +78,8 @@ impl Operand {
     }
 
     // TODO: Check every place i could use this function in
-    pub fn op_to_ssavar(&self) -> SSAVar {
-        let Operand::SSAVar { addr, version } = *self else {
+    pub fn to_ssavar(self) -> SSAVar {
+        let Operand::SSAVar { addr, version } = self else {
             unreachable!("Invalid Operand to covert into SSAVar")
         };
 

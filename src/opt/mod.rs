@@ -3,7 +3,7 @@ use crate::{
     opt::{
         cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
         dce::DeadCodeElimination, interference::Interference, liveness::Liveness,
-        rewriter::Rewriter, ssa::SSABuilder,
+        phi_elimination::PhiElimination, rewriter::Rewriter, ssa::SSABuilder,
     },
 };
 
@@ -13,6 +13,7 @@ mod dbe;
 mod dce;
 mod interference;
 mod liveness;
+mod phi_elimination;
 mod rewriter;
 mod ssa;
 
@@ -42,8 +43,10 @@ impl Optimizer {
         let mut liveness = Liveness::new(&cfg);
         liveness.analysis(&cfg);
 
-        let (in_sets, out_sets) = (&liveness.in_sets, &liveness.out_sets);
-        let mut interference = Interference::new(in_sets, out_sets);
+        let mut interference = Interference::new(&liveness.out_sets);
         interference.find(&cfg);
+
+        let mut phi_elimination = PhiElimination::default();
+        phi_elimination.eliminate(&mut cfg);
     }
 }

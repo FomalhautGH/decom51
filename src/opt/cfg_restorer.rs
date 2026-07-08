@@ -11,6 +11,19 @@ pub struct BasicBlock {
     pub phis: Vec<Phi>,
 }
 
+impl BasicBlock {
+    // TODO: Check if there are places where i can use this new function
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            irs: Vec::new(),
+            successors: Vec::new(),
+            predecessors: Vec::new(),
+            phis: Vec::new(),
+        }
+    }
+}
+
 pub type HashBlocks = HashMap<BlockId, BasicBlock>;
 
 #[derive(Debug)]
