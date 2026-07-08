@@ -78,12 +78,12 @@ impl Operand {
     }
 
     // TODO: Check every place i could use this function in
-    pub fn to_ssavar(self) -> SSAVar {
-        let Operand::SSAVar { addr, version } = self else {
-            unreachable!("Invalid Operand to covert into SSAVar")
-        };
-
-        (addr, version)
+    pub fn to_ssavar(self) -> Option<SSAVar> {
+        if let Operand::SSAVar { addr, version } = self {
+            Some((addr, version))
+        } else {
+            None
+        }
     }
 }
 

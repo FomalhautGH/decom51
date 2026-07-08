@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::common::{BlockId, Ir51, Phi};
+use crate::common::{BlockId, Ir51, Operand, Phi};
 
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
@@ -30,6 +30,18 @@ pub type HashBlocks = HashMap<BlockId, BasicBlock>;
 pub struct ControlFlowGraph {
     pub blocks: HashBlocks,
     pub start_block: BlockId,
+}
+
+impl ControlFlowGraph {
+    pub fn remove_nops(&mut self) {
+        // TODO: Use a better null operand for the phis
+        for block in self.blocks.values_mut() {
+            block.irs.retain(|ir| !matches!(ir, Ir51::Nop));
+            block
+                .phis
+                .retain(|phi| !matches!(phi.operand, Operand::Constant(0)));
+        }
+    }
 }
 
 #[derive(Debug)]

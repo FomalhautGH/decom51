@@ -30,7 +30,7 @@ The analysis engine of the decompiler. It computes variable state properties and
 
 ### 🟡 Phase 4: Recovery & Aggregation (In progress)
 The bridge between machine logic and human logic. It hides the SSA mechanics and rebuilds complex mathematical expressions.
-- [ ] **De-SSA & Variable Coalescing:** Performs *Liveness Analysis* and builds Interference Graphs to figure out which SSA versions can share the same memory space, collapsing dozens of versions (e.g., `R7_1`, `R7_2`) back into standard local C variables.
+- [x] **De-SSA & Variable Coalescing:** Performs *Liveness Analysis* and builds Interference Graphs to figure out which SSA versions can share the same memory space, collapsing dozens of versions (e.g., `R7_1`, `R7_2`) back into standard local C variables.
 - [ ] **Variable Width Aggregation (High/Low Byte Merging):** Identifies pairs of 8-bit variables representing the high and low parts of the same 16-bit variable (a very common occurrence in 8051 code, e.g., combining `DPL` and `DPH` or adjacent registers) and merges them into single 16-bit variables.
 - [ ] **Expression Aggregation:** Walks backward up the Def-Use chains to collapse vertical TAC instructions into horizontal, nested C expressions (transforming `t1 = a + b; t2 = t1 * c; res = t2;` directly into `res = (a + b) * c;`).
 

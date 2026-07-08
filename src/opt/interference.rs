@@ -14,7 +14,7 @@ use std::collections::HashSet;
 //
 // Tho SSAVars interfere with each other when they need to *live* at
 // the same time
-type InterferenceGraph = HashSet<(SSAVar, SSAVar)>;
+pub type InterferenceGraph = HashSet<(SSAVar, SSAVar)>;
 
 pub struct Interference<'a> {
     out_sets: &'a LocalSet,
@@ -29,7 +29,7 @@ impl<'a> Interference<'a> {
         }
     }
 
-    pub fn find(&mut self, cfg: &ControlFlowGraph) {
+    pub fn build_graph(&mut self, cfg: &ControlFlowGraph) -> InterferenceGraph {
         for block in cfg.blocks.values() {
             self.analyze_block(block);
         }
@@ -37,6 +37,8 @@ impl<'a> Interference<'a> {
         if cfg!(debug_assertions) {
             println!("Interferences graph: {:?}", self.interferences);
         }
+
+        self.interferences.clone()
     }
 
     fn analyze_block(&mut self, block: &BasicBlock) {
@@ -60,8 +62,8 @@ impl<'a> Interference<'a> {
         // each other
         for i in 0..phi_destinations.len() {
             for j in (i + 1)..phi_destinations.len() {
-                let ssavar1 = phi_destinations[i].to_ssavar();
-                let ssavar2 = phi_destinations[j].to_ssavar();
+                let ssavar1 = phi_destinations[i].to_ssavar().unwrap();
+                let ssavar2 = phi_destinations[j].to_ssavar().unwrap();
 
                 if is_ssa_smaller(ssavar1, ssavar2) {
                     self.interferences.insert((ssavar1, ssavar2));

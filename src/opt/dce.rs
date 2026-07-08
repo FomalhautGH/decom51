@@ -74,12 +74,7 @@ impl DeadCodeElimination {
         }
 
         // Cleanup all the nops
-        for block in cfg.blocks.values_mut() {
-            block.irs.retain(|ir| !matches!(ir, Ir51::Nop));
-            block
-                .phis
-                .retain(|phi| !matches!(phi.operand, Operand::Constant(0)));
-        }
+        cfg.remove_nops();
     }
 
     fn delete_instruction(&mut self, cfg: &mut ControlFlowGraph, block_id: BlockId, index: usize) {
