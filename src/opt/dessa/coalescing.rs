@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     common::{BlockId, Ir51, Operand, SSAVar, is_ssa_smaller},
-    opt::{cfg_restorer::ControlFlowGraph, interference::InterferenceGraph},
+    opt::{cfg_restorer::ControlFlowGraph, dessa::interference::InterferenceGraph},
 };
 
 struct MoveInfo {

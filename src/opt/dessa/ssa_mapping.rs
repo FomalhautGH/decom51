@@ -4,19 +4,19 @@ use crate::{
     common::{Ir51, Operand, SSAVar, VarId},
     opt::{
         cfg_restorer::ControlFlowGraph,
-        interference::{InterferenceGraph, do_they_interfere},
+        dessa::interference::{InterferenceGraph, do_they_interfere},
     },
 };
 
 // Addr mapping tells if for an address there's already a mapping in
 // ssa_mappings and for which SSAVar specifically
-pub struct DeSSA {
+pub struct SSAMapping {
     counter: usize,
     ssa_mappings: HashMap<SSAVar, VarId>,
     interference_graph: InterferenceGraph,
 }
 
-impl DeSSA {
+impl SSAMapping {
     pub fn new(interference_graph: InterferenceGraph) -> Self {
         Self {
             counter: 1,

@@ -2,7 +2,7 @@ use crate::{
     common::{BlockId, Ir51, Operand, Phi, SSAVar, is_ssa_smaller},
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
-        liveness::LocalSet,
+        dessa::liveness::LocalSet,
     },
 };
 use std::collections::HashSet;

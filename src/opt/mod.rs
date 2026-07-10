@@ -1,22 +1,16 @@
 use crate::{
     common::Ir51,
     opt::{
-        cfg_restorer::CFGRestorer, coalescing::VariableCoalescing,
-        const_propagation::ConstPropagation, dbe::DeadBlockElimination, dce::DeadCodeElimination,
-        de_ssa::DeSSA, interference::Interference, liveness::Liveness,
-        phi_elimination::PhiElimination, rewriter::Rewriter, ssa::SSABuilder,
+        cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
+        dce::DeadCodeElimination, dessa::DeSSA, rewriter::Rewriter, ssa::SSABuilder,
     },
 };
 
 mod cfg_restorer;
-mod coalescing;
 mod const_propagation;
 mod dbe;
 mod dce;
-mod de_ssa;
-mod interference;
-mod liveness;
-mod phi_elimination;
+mod dessa;
 mod rewriter;
 mod ssa;
 
@@ -41,28 +35,6 @@ impl Optimizer {
         let mut dce = DeadCodeElimination::default();
         dce.execute(&mut cfg);
 
-        // TODO: Put de-ssa phases in a dedicated module and maybe put the cfg
-        // directly in the fields of the respective structs
-        let mut liveness = Liveness::new(&cfg);
-        liveness.analysis(&cfg);
-
-        let mut interference = Interference::new(&liveness.out_sets);
-        let interference_graph = interference.build_graph(&cfg);
-
-        let mut phi_elimination = PhiElimination::default();
-        phi_elimination.eliminate(&mut cfg);
-
-        let mut coalescing = VariableCoalescing::new(interference_graph);
-        coalescing.execute(&mut cfg);
-
-        // Recreate intereference graph after coalescing
-        let mut liveness = Liveness::new(&cfg);
-        liveness.analysis(&cfg);
-
-        let mut interference = Interference::new(&liveness.out_sets);
-        let interference_graph = interference.build_graph(&cfg);
-
-        let mut dessa = DeSSA::new(interference_graph);
-        dessa.execute(&mut cfg);
+        DeSSA::execute(&mut cfg);
     }
 }
