@@ -30,13 +30,15 @@ impl PhiElimination {
             Self::critical_edge(from_block, *new_blockid, edge.toid);
         }
 
+        // Clean up all the phis
+        for block in cfg.blocks.values_mut() {
+            block.phis.clear();
+        }
+
         if cfg!(debug_assertions) {
             println!("======================== PHI ELIMINATION ========================");
             for block in cfg.blocks.values() {
-                println!("Block {}:", block.id);
-                for (i, ir) in block.irs.iter().enumerate() {
-                    println!("    {i}: {ir:?}")
-                }
+                println!("{:#?}", block);
             }
         }
     }
@@ -57,6 +59,9 @@ impl PhiElimination {
                     let middle_blockid = self.new_edges.entry(key).or_insert_with(|| {
                         let mut new_block = BasicBlock::new(block_idx);
                         new_block.irs.push(Ir51::Jump(block.id));
+
+                        new_block.predecessors.push(*from);
+                        new_block.successors.push(block.id);
 
                         cfg.blocks.insert(new_block.id, new_block);
 

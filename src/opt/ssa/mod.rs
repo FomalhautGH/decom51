@@ -304,7 +304,8 @@ impl SSABuilder {
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
-            | Operand::SSAVar { .. } => *op,
+            | Operand::SSAVar { .. }
+            | Operand::Var(_) => *op,
         }
     }
 
@@ -353,7 +354,8 @@ impl SSABuilder {
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
-            | Operand::SSAVar { .. } => *op,
+            | Operand::SSAVar { .. }
+            | Operand::Var(_) => *op,
         }
     }
 

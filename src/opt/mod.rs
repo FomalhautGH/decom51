@@ -3,8 +3,8 @@ use crate::{
     opt::{
         cfg_restorer::CFGRestorer, coalescing::VariableCoalescing,
         const_propagation::ConstPropagation, dbe::DeadBlockElimination, dce::DeadCodeElimination,
-        interference::Interference, liveness::Liveness, phi_elimination::PhiElimination,
-        rewriter::Rewriter, ssa::SSABuilder,
+        de_ssa::DeSSA, interference::Interference, liveness::Liveness,
+        phi_elimination::PhiElimination, rewriter::Rewriter, ssa::SSABuilder,
     },
 };
 
@@ -13,6 +13,7 @@ mod coalescing;
 mod const_propagation;
 mod dbe;
 mod dce;
+mod de_ssa;
 mod interference;
 mod liveness;
 mod phi_elimination;
@@ -53,5 +54,15 @@ impl Optimizer {
 
         let mut coalescing = VariableCoalescing::new(interference_graph);
         coalescing.execute(&mut cfg);
+
+        // Recreate intereference graph after coalescing
+        let mut liveness = Liveness::new(&cfg);
+        liveness.analysis(&cfg);
+
+        let mut interference = Interference::new(&liveness.out_sets);
+        let interference_graph = interference.build_graph(&cfg);
+
+        let mut dessa = DeSSA::new(interference_graph);
+        dessa.execute(&mut cfg);
     }
 }

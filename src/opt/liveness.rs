@@ -121,14 +121,14 @@ impl Liveness {
     fn use_def_on_ir(&mut self, ir: &Ir51, blockid: BlockId) {
         match ir {
             Ir51::Move { dest, src } => {
-                self.save_def(dest, blockid);
                 self.save_use(src, blockid);
+                self.save_def(dest, blockid);
             }
 
             Ir51::BinOp { dest, lhs, rhs, .. } => {
-                self.save_def(dest, blockid);
                 self.save_use(lhs, blockid);
                 self.save_use(rhs, blockid);
+                self.save_def(dest, blockid);
             }
 
             Ir51::Store {
@@ -139,8 +139,8 @@ impl Liveness {
             }
 
             Ir51::Load { dest, src_ptr, .. } => {
-                self.save_def(dest, blockid);
                 self.save_use(src_ptr, blockid);
+                self.save_def(dest, blockid);
             }
 
             Ir51::BranchIf { cond, .. } => self.save_use(cond, blockid),
@@ -160,7 +160,10 @@ impl Liveness {
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Address(_, _) | Operand::Register(_) | Operand::Temporary(_) => unreachable!(),
+            Operand::Address(_, _)
+            | Operand::Register(_)
+            | Operand::Temporary(_)
+            | Operand::Var(_) => unreachable!(),
         }
     }
 
@@ -170,7 +173,6 @@ impl Liveness {
                 let key = (*addr, *version);
 
                 let def = self.def_sets.entry(blockid).or_default().contains(&key);
-
                 if !def {
                     self.use_sets.entry(blockid).or_default().insert(key);
                 }
@@ -178,7 +180,10 @@ impl Liveness {
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Address(_, _) | Operand::Register(_) | Operand::Temporary(_) => unreachable!(),
+            Operand::Address(_, _)
+            | Operand::Register(_)
+            | Operand::Temporary(_)
+            | Operand::Var(_) => unreachable!(),
         }
     }
 }

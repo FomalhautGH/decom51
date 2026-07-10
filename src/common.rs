@@ -50,6 +50,7 @@ pub type Addr = u16;
 pub type Constant = u16;
 pub type Version = usize;
 pub type TempIndex = usize;
+pub type VarId = usize;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Operand {
@@ -62,6 +63,8 @@ pub enum Operand {
 
     Address(Addr, AddrSpace),
     SSAVar { addr: Addr, version: Version },
+
+    Var(VarId),
 }
 
 impl Operand {
@@ -73,7 +76,8 @@ impl Operand {
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::Temporary(_)
-            | Operand::Address(_, _) => unreachable!("{self:?}"),
+            | Operand::Address(_, _)
+            | Operand::Var(_) => unreachable!("{self:?}"),
         }
     }
 

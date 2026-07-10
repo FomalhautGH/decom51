@@ -506,7 +506,10 @@ impl ConstPropagation {
             // We work on constant later
             Operand::Constant(_) => None,
 
-            Operand::Address(_, _) | Operand::Temporary(_) | Operand::Register(_) => {
+            Operand::Address(_, _)
+            | Operand::Temporary(_)
+            | Operand::Register(_)
+            | Operand::Var(_) => {
                 unreachable!("{operand:?}")
             }
         };

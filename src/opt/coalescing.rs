@@ -84,35 +84,25 @@ impl VariableCoalescing {
                 replace(src);
             }
 
-            Ir51::BinOp { op, dest, lhs, rhs } => {
+            Ir51::BinOp { dest, lhs, rhs, .. } => {
                 replace(dest);
                 replace(lhs);
                 replace(rhs);
             }
 
             Ir51::Store {
-                space,
-                dest_ptr,
-                value,
+                dest_ptr, value, ..
             } => {
                 replace(dest_ptr);
                 replace(value);
             }
 
-            Ir51::Load {
-                space,
-                dest,
-                src_ptr,
-            } => {
+            Ir51::Load { dest, src_ptr, .. } => {
                 replace(dest);
                 replace(src_ptr);
             }
 
-            Ir51::BranchIf {
-                cond,
-                true_jmp,
-                false_jmp,
-            } => replace(cond),
+            Ir51::BranchIf { cond, .. } => replace(cond),
 
             Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return | Ir51::Nop => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),

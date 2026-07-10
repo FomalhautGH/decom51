@@ -135,7 +135,10 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Register(_) | Operand::Temporary(_) | Operand::Address(_, _) => unreachable!(),
+            Operand::Register(_)
+            | Operand::Temporary(_)
+            | Operand::Address(_, _)
+            | Operand::Var(_) => unreachable!(),
         }
     }
 
@@ -218,7 +221,8 @@ impl DeadCodeElimination {
             Operand::Address(_, _)
             | Operand::Constant(_)
             | Operand::Temporary(_)
-            | Operand::Register(_) => {
+            | Operand::Register(_)
+            | Operand::Var(_) => {
                 unreachable!("{dest:?}")
             }
         };
@@ -304,7 +308,10 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Address(_, _) | Operand::Register(_) | Operand::Temporary(_) => unreachable!(),
+            Operand::Address(_, _)
+            | Operand::Register(_)
+            | Operand::Temporary(_)
+            | Operand::Var(_) => unreachable!(),
         }
     }
 
@@ -325,7 +332,10 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Register(_) | Operand::Temporary(_) | Operand::Address(_, _) => unreachable!(),
+            Operand::Register(_)
+            | Operand::Temporary(_)
+            | Operand::Address(_, _)
+            | Operand::Var(_) => unreachable!(),
         }
     }
 }

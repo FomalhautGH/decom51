@@ -16,6 +16,11 @@ use std::collections::HashSet;
 // the same time
 pub type InterferenceGraph = HashSet<(SSAVar, SSAVar)>;
 
+// TODO: put this method in a better place
+pub fn do_they_interfere(graph: &InterferenceGraph, a: SSAVar, b: SSAVar) -> bool {
+    graph.contains(&(a, b)) || graph.contains(&(b, a))
+}
+
 pub struct Interference<'a> {
     out_sets: &'a LocalSet,
     interferences: InterferenceGraph,
