@@ -26,29 +26,10 @@ impl<'a> Rewriter<'a> {
 
         if cfg!(debug_assertions) {
             println!("======================== IR CODE AFTER REWRITE ========================");
-            println!("Irs: ");
-            for block in cfg.blocks.values() {
-                println!("Block {}:", block.id);
-                for (i, ir) in block.irs.iter().enumerate() {
-                    println!("  {i}: {ir:?}")
-                }
-            }
-
-            println!("Phis per block: ");
-            for block in cfg.blocks.values() {
-                println!(
-                    "----------------------- Block number {} -----------------------",
-                    block.id
-                );
-
-                for (i, phi) in block.phis.iter().enumerate() {
-                    println!("{i}: {phi:?}")
-                }
-
-                println!(
-                    "----------------------- End block number {} -----------------------",
-                    block.id
-                );
+            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
             }
         }
     }

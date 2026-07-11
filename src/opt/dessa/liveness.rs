@@ -1,5 +1,5 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi, SSAVar},
+    common::{BlockId, Ir51, Operand, Phi, SSAVar, format_addr},
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 use std::collections::{HashMap, HashSet};
@@ -35,8 +35,23 @@ impl Liveness {
 
         if cfg!(debug_assertions) {
             println!("======================== LIVENESS ANALYSIS ========================");
-            println!("Use Set: {:?}; Def Set: {:?}", self.use_sets, self.def_sets);
-            println!("In Set: {:?}; Out Set: {:?}", self.in_sets, self.out_sets);
+            let mut sorted_blocks: Vec<BlockId> = self.use_sets.keys().copied().collect();
+            sorted_blocks.sort();
+            for &block_id in &sorted_blocks {
+                let format_set = |set: &HashSet<SSAVar>| -> String {
+                    let mut ssa_strs: Vec<String> = set
+                        .iter()
+                        .map(|s| format!("{}_{}", format_addr(s.0), s.1))
+                        .collect();
+                    ssa_strs.sort();
+                    format!("{{{}}}", ssa_strs.join(", "))
+                };
+                println!("Block {}:", block_id);
+                println!("  UseSet: {}", format_set(&self.use_sets[&block_id]));
+                println!("  DefSet: {}", format_set(&self.def_sets[&block_id]));
+                println!("  InSet:  {}", format_set(&self.in_sets[&block_id]));
+                println!("  OutSet: {}", format_set(&self.out_sets[&block_id]));
+            }
         }
     }
 

@@ -1,11 +1,14 @@
 use crate::{
-    common::{Addr, AddrSpace, BlockId, Ir51, Operand, Phi, TempIndex},
+    common::{Addr, AddrSpace, BlockId, Ir51, Operand, Phi, TempIndex, format_addr},
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
         ssa::chk_algorithm::{CHKAlgorithm, Dominators},
     },
 };
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Display, Formatter, Result},
+};
 
 mod chk_algorithm;
 
@@ -24,6 +27,15 @@ enum VisitState {
 enum VarKey {
     Mem(Addr),       // For classic variables
     Temp(TempIndex), // For temporary variables
+}
+
+impl Display for VarKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            VarKey::Mem(addr) => write!(f, "{}", format_addr(*addr)),
+            VarKey::Temp(idx) => write!(f, "t{}", idx),
+        }
+    }
 }
 
 // Represents variables by their address and the block they are modified in
@@ -50,35 +62,38 @@ impl SSABuilder {
 
         if cfg!(debug_assertions) {
             println!("======================== SSA ========================");
-            println!("Immidiate dominators: {immidiate_dominators:?}");
-            println!("Variables and where they're modified: {variables:?}");
-            println!("Dominator frontiers: {dominator_frontiers:?}");
-
-            println!("======================== IR CODE AFTER SSA ========================");
-
-            for block in cfg.blocks.values() {
-                println!(
-                    "----------------------- Block number {} -----------------------",
-                    block.id
-                );
-
-                println!("Phis: ");
-                for (i, phi) in block.phis.iter().enumerate() {
-                    println!("{i}: {phi:?}")
-                }
-
-                println!("Irs: ");
-                for (i, ir) in block.irs.iter().enumerate() {
-                    println!("{i}: {ir:?}")
-                }
-
-                println!(
-                    "----------------------- End block number {} -----------------------",
-                    block.id
-                );
+            println!("Immediate dominators:");
+            let mut sorted_idoms: Vec<(&BlockId, &BlockId)> = immidiate_dominators.iter().collect();
+            sorted_idoms.sort_by_key(|e| e.0);
+            for (block, idom) in sorted_idoms {
+                println!("  Block_{} is dominated by Block_{}", block, idom);
             }
 
-            println!("Blocks after SSA: {:#?}", cfg.blocks);
+            println!("Variables and where they're modified:");
+            let mut sorted_vars: Vec<(&VarKey, &HashSet<BlockId>)> = variables.iter().collect();
+            sorted_vars.sort_by_key(|(k, _)| k.to_string());
+            for (var, blocks) in sorted_vars {
+                let mut blocks_vec: Vec<&BlockId> = blocks.iter().collect();
+                blocks_vec.sort();
+                println!("  {}: {:?}", var, blocks_vec);
+            }
+
+            println!("Dominator frontiers:");
+            let mut sorted_frontiers: Vec<(&BlockId, &HashSet<BlockId>)> =
+                dominator_frontiers.iter().collect();
+            sorted_frontiers.sort_by_key(|e| e.0);
+            for (block, frontier) in sorted_frontiers {
+                let mut frontier_vec: Vec<&BlockId> = frontier.iter().collect();
+                frontier_vec.sort();
+                println!("  DF(Block_{}) = {:?}", block, frontier_vec);
+            }
+
+            println!("======================== IR CODE AFTER SSA ========================");
+            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
+            }
         }
     }
 

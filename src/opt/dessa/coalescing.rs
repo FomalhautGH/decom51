@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use crate::{
     common::{BlockId, Ir51, Operand, SSAVar, is_ssa_smaller},
-    opt::{cfg_restorer::ControlFlowGraph, dessa::interference::InterferenceGraph},
+    opt::{
+        cfg_restorer::{BasicBlock, ControlFlowGraph},
+        dessa::interference::InterferenceGraph,
+    },
 };
 
 struct MoveInfo {
@@ -54,11 +57,10 @@ impl VariableCoalescing {
 
         if cfg!(debug_assertions) {
             println!("======================== VARIABLE COALESCING ========================");
-            for block in cfg.blocks.values() {
-                println!("Block {}:", block.id);
-                for (i, ir) in block.irs.iter().enumerate() {
-                    println!("    {i}: {ir:?}")
-                }
+            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
             }
         }
     }

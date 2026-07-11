@@ -38,8 +38,10 @@ impl PhiElimination {
 
         if cfg!(debug_assertions) {
             println!("======================== PHI ELIMINATION ========================");
-            for block in cfg.blocks.values() {
-                println!("{:#?}", block);
+            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
             }
         }
     }

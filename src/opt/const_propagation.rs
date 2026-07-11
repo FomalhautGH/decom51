@@ -1,7 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Display, Formatter, Result},
+};
 
 use crate::{
-    common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, SSAVar, TempSSAVar},
+    common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, SSAVar, TempSSAVar, format_addr},
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 
@@ -9,6 +12,15 @@ use crate::{
 enum Either {
     SSAVar(SSAVar),
     TempSSAVar(TempSSAVar),
+}
+
+impl Display for Either {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Either::SSAVar((addr, version)) => write!(f, "{}_{}", format_addr(*addr), version),
+            Either::TempSSAVar((idx, version)) => write!(f, "t{}_{}", idx, version),
+        }
+    }
 }
 
 // States in which a SSAVar can be: Unknown (self explainatory), Constant (a constant) and
@@ -70,7 +82,13 @@ impl ConstPropagation {
 
         if cfg!(debug_assertions) {
             println!("======================== CONST PROP ========================");
-            println!("Def-Use Chain: {:?}", self.defuse_chain);
+            println!("Def-Use Chain:");
+            let mut sorted_chain: Vec<(&Either, &Vec<(BlockId, UseLocation)>)> =
+                self.defuse_chain.iter().collect();
+            sorted_chain.sort_by_key(|(k, _)| k.to_string());
+            for (key, uses) in sorted_chain {
+                println!("  {} is used in: {:?}", key, uses);
+            }
         }
 
         // Start by inserting the first acr to analyze
@@ -82,8 +100,19 @@ impl ConstPropagation {
         }
 
         if cfg!(debug_assertions) {
-            println!("Variables: {:?}", self.known_values);
-            println!("Temporaries: {:?}", self.known_temps);
+            println!("Variables:");
+            let mut sorted_vars: Vec<(&SSAVar, &SSAState)> = self.known_values.iter().collect();
+            sorted_vars.sort_by_key(|(var, _)| format!("{}_{}", format_addr(var.0), var.1));
+            for (var, state) in sorted_vars {
+                println!("  {}_{}: {:?}", format_addr(var.0), var.1, state);
+            }
+
+            println!("Temporaries:");
+            let mut sorted_temps: Vec<(&TempSSAVar, &SSAState)> = self.known_temps.iter().collect();
+            sorted_temps.sort_by_key(|t| (t.0.0, t.0.1));
+            for (temp, state) in sorted_temps {
+                println!("  t{}_{}: {:?}", temp.0, temp.1, state);
+            }
         }
     }
 

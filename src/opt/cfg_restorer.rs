@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Display, Error, Formatter},
+};
 
 use crate::common::{BlockId, Ir51, Operand, Phi};
 
@@ -60,7 +63,7 @@ impl CFGRestorer {
         if cfg!(debug_assertions) {
             println!("======================== IR CODE AFTER CFG ========================");
             for (i, ir) in ir_code.iter().enumerate() {
-                println!("{i}: {ir:?}")
+                println!("{i}: {ir}")
             }
         }
 
@@ -208,5 +211,29 @@ impl CFGRestorer {
             Ok(idx) => idx,
             Err(idx) => idx - 1,
         }
+    }
+}
+
+impl Display for BasicBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        writeln!(f, "Block {}:", self.id)?;
+        writeln!(f, "  Predecessors: {:?}", self.predecessors)?;
+        writeln!(f, "  Successors:   {:?}", self.successors)?;
+
+        if !self.phis.is_empty() {
+            writeln!(f, "  Phis:")?;
+            for phi in &self.phis {
+                writeln!(f, "    {}", phi)?;
+            }
+        }
+
+        if !self.irs.is_empty() {
+            writeln!(f, "  Instructions:")?;
+            for (i, ir) in self.irs.iter().enumerate() {
+                writeln!(f, "    {}: {}", i, ir)?;
+            }
+        }
+
+        Ok(())
     }
 }

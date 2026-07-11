@@ -19,7 +19,7 @@ impl Lifting {
         if cfg!(debug_assertions) {
             println!("======================== IR CODE NORMALIZED ========================");
             for (i, ir) in ir_code.iter().enumerate() {
-                println!("{i}: {ir:?}")
+                println!("{i}: {ir}")
             }
         }
 

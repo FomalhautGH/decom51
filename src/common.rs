@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter, Result},
+};
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -167,4 +170,117 @@ pub type TempSSAVar = (TempIndex, Version);
 // TODO: Maybe is it bettere to have SSAVar as a struct and implement PartialOrd
 pub fn is_ssa_smaller(a: SSAVar, b: SSAVar) -> bool {
     if a.0 == b.0 { a.1 < b.1 } else { a.0 < b.0 }
+}
+
+// TODO: Maybe make addr a struct so that we can implement display/debug
+pub fn format_addr(addr: Addr) -> String {
+    match addr {
+        0xE0 => "A".to_string(),
+        0xF0 => "B".to_string(),
+        0xD0 => "PSW".to_string(),
+        0x81 => "SP".to_string(),
+        0x82 => "DPL".to_string(),
+        0x83 => "DPH".to_string(),
+        0..=7 => format!("R{}", addr),
+        _ => format!("iData[0x{:02X}]", addr),
+    }
+}
+
+impl Display for Operand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Operand::Register(reg) => write!(f, "{:?}", reg),
+            Operand::Constant(c) => write!(f, "#0x{:02X}", c),
+            Operand::Temporary(idx) => write!(f, "t{}", idx),
+            Operand::TempSSAVar { index, version } => write!(f, "t{}_{}", index, version),
+            Operand::Address(addr, space) => match space {
+                AddrSpace::iData => write!(f, "{}", format_addr(*addr)),
+                AddrSpace::xData => write!(f, "xData[0x{:04X}]", addr),
+                AddrSpace::Code => write!(f, "code[0x{:04X}]", addr),
+            },
+            Operand::SSAVar { addr, version } => {
+                write!(f, "{}_{}", format_addr(*addr), version)
+            }
+            Operand::Var(id) => write!(f, "v{}", id),
+        }
+    }
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Eq => write!(f, "=="),
+            BinOp::Lt => write!(f, "<"),
+            BinOp::Gt => write!(f, ">"),
+            BinOp::Le => write!(f, "<="),
+            BinOp::Ge => write!(f, ">="),
+            BinOp::Ne => write!(f, "!="),
+            BinOp::Or => write!(f, "|"),
+            BinOp::BorrowOut => write!(f, "borrow_out"),
+        }
+    }
+}
+
+impl Display for Ir51 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Ir51::Move { dest, src } => write!(f, "{} = {}", dest, src),
+            Ir51::BinOp { op, dest, lhs, rhs } => {
+                if matches!(op, BinOp::BorrowOut) {
+                    write!(f, "{} = borrow_out({}, {})", dest, lhs, rhs)
+                } else {
+                    write!(f, "{} = {} {} {}", dest, lhs, op, rhs)
+                }
+            }
+            Ir51::Store {
+                space,
+                dest_ptr,
+                value,
+            } => {
+                write!(f, "*{:?}[{}] = {}", space, dest_ptr, value)
+            }
+            Ir51::Load {
+                space,
+                dest,
+                src_ptr,
+            } => {
+                write!(f, "{} = *{:?}[{}]", dest, space, src_ptr)
+            }
+            Ir51::Jump(label) => write!(f, "goto Block_{}", label),
+            Ir51::BranchIf {
+                cond,
+                true_jmp,
+                false_jmp,
+            } => {
+                write!(
+                    f,
+                    "if ({}) goto Block_{} else goto Block_{}",
+                    cond, true_jmp, false_jmp
+                )
+            }
+            Ir51::Call(label) => write!(f, "call Block_{}", label),
+            Ir51::Return => write!(f, "ret"),
+            Ir51::Nop => write!(f, "nop"),
+            Ir51::InvalidIr => write!(f, "invalid"),
+        }
+    }
+}
+
+impl Display for Phi {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} = phi {{ ", self.operand)?;
+        let mut first = true;
+        let mut keys: Vec<&BlockId> = self.incoming.keys().collect();
+        keys.sort();
+        for &k in keys {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "Block_{}: {}", k, self.incoming[&k])?;
+            first = false;
+        }
+        write!(f, " }}")
+    }
 }

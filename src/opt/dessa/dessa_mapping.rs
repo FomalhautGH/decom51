@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     common::{Ir51, Operand, SSAVar, VarId},
     opt::{
-        cfg_restorer::ControlFlowGraph,
+        cfg_restorer::{BasicBlock, ControlFlowGraph},
         dessa::interference::{InterferenceGraph, do_they_interfere},
     },
 };
@@ -40,11 +40,10 @@ impl DeSSAMapping {
 
         if cfg!(debug_assertions) {
             println!("======================== DE-SSA MAPPING ========================");
-            for block in cfg.blocks.values() {
-                println!("Block {}:", block.id);
-                for (i, ir) in block.irs.iter().enumerate() {
-                    println!("    {i}: {ir:?}")
-                }
+            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
             }
         }
     }

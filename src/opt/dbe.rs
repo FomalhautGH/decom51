@@ -14,7 +14,9 @@ impl DeadBlockElimination {
 
         if cfg!(debug_assertions) {
             println!("======================== DBE ========================");
-            println!("Reachable Blocks: {:?}", self.reached_blocks);
+            let mut sorted_reached: Vec<&BlockId> = self.reached_blocks.iter().collect();
+            sorted_reached.sort();
+            println!("Reachable Blocks: {:?}", sorted_reached);
         }
 
         self.cleanup(cfg);

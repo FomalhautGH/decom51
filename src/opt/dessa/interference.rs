@@ -1,5 +1,5 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi, SSAVar, is_ssa_smaller},
+    common::{BlockId, Ir51, Operand, Phi, SSAVar, format_addr, is_ssa_smaller},
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
         dessa::liveness::LocalSet,
@@ -40,7 +40,27 @@ impl<'a> Interference<'a> {
         }
 
         if cfg!(debug_assertions) {
-            println!("Interferences graph: {:?}", self.interferences);
+            println!("Interferences graph:");
+            let mut sorted_interferences: Vec<&(SSAVar, SSAVar)> =
+                self.interferences.iter().collect();
+            sorted_interferences.sort_by_key(|pair| {
+                format!(
+                    "{}_{} <-> {}_{}",
+                    format_addr(pair.0.0),
+                    pair.0.1,
+                    format_addr(pair.1.0),
+                    pair.1.1
+                )
+            });
+            for pair in sorted_interferences {
+                println!(
+                    "  {}_{} <-> {}_{}",
+                    format_addr(pair.0.0),
+                    pair.0.1,
+                    format_addr(pair.1.0),
+                    pair.1.1
+                );
+            }
         }
 
         self.interferences.clone()

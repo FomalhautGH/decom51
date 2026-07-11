@@ -1,5 +1,5 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi, SSAVar, TempSSAVar},
+    common::{BlockId, Ir51, Operand, Phi, SSAVar, TempSSAVar, format_addr},
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 use std::collections::HashMap;
@@ -37,25 +37,31 @@ impl DeadCodeElimination {
 
         if cfg!(debug_assertions) {
             println!("======================== DEAD CODE ELIMINATION ========================");
-            println!("Uses for SSA: {:?}", self.variable_uses);
-            println!("Uses for TempSSA: {:?}", self.temporary_uses);
-            println!("Defs for SSA: {:?}", self.variable_defs);
-            println!("Defs for TempSSA: {:?}", self.temporary_defs);
-            println!("Dead Instructions indeces: {:?}", self.dead_instructions);
+            println!("Uses for SSA:");
+            let mut sorted_vars: Vec<(&SSAVar, &usize)> = self.variable_uses.iter().collect();
+            sorted_vars.sort_by_key(|(var, _)| format!("{}_{}", format_addr(var.0), var.1));
+            for (var, uses) in sorted_vars {
+                println!("  {}_{}: {}", format_addr(var.0), var.1, uses);
+            }
+
+            println!("Uses for TempSSA:");
+            let mut sorted_temps: Vec<(&TempSSAVar, &usize)> = self.temporary_uses.iter().collect();
+            sorted_temps.sort_by_key(|t| (t.0.0, t.0.1));
+            for (temp, uses) in sorted_temps {
+                println!("  t{}_{}: {}", temp.0, temp.1, uses);
+            }
+
+            println!("Dead Instructions indices: {:?}", self.dead_instructions);
         }
 
         self.cleanup(cfg); // Phase 3: Actual cleanup of instructions
 
         if cfg!(debug_assertions) {
             println!("======================== IR CODE CLEANED ========================");
-            for block in cfg.blocks.values() {
-                println!("Block {}:", block.id);
-                for (i, phi) in block.phis.iter().enumerate() {
-                    println!("  {i}: {phi:?}")
-                }
-                for (i, ir) in block.irs.iter().enumerate() {
-                    println!("  {i}: {ir:?}")
-                }
+            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
             }
         }
     }

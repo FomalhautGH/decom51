@@ -36,7 +36,7 @@ impl Lifter {
         if cfg!(debug_assertions) {
             println!("======================== IR CODE ========================");
             for (i, ir) in ir_code.iter().enumerate() {
-                println!("{i}: {ir:?}")
+                println!("{i}: {ir}")
             }
         }
 
