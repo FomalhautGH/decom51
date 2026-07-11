@@ -43,6 +43,7 @@ impl Liveness {
     fn in_out_analysis(&mut self, cfg: &ControlFlowGraph) {
         let mut changed = true;
         while changed {
+            changed = false;
             for block in cfg.blocks.values() {
                 self.in_out_block(cfg, block, &mut changed);
             }
@@ -96,8 +97,6 @@ impl Liveness {
             *out_set = new_out_set;
 
             *changed = true;
-        } else {
-            *changed = false;
         }
     }
 

@@ -78,7 +78,6 @@ impl MemNormalizer {
 
             Register::A => Operand::Address(0xE0, AddrSpace::iData),
             Register::B => Operand::Address(0xF0, AddrSpace::iData),
-            Register::PSW => Operand::Address(0xD0, AddrSpace::iData),
             Register::SP => Operand::Address(0x81, AddrSpace::iData),
             Register::DPL => Operand::Address(0x82, AddrSpace::iData),
             Register::DPH => Operand::Address(0x83, AddrSpace::iData),
@@ -105,6 +104,10 @@ impl MemNormalizer {
             Register::IP => Operand::Address(0xB8, AddrSpace::iData),
 
             Register::C => Operand::Address(0xD0, AddrSpace::iData),
+
+            Register::PSW => todo!(
+                "Since PSW contains flags every single bit (like the Carry) we do not support its presence yet"
+            ),
         }
     }
 }

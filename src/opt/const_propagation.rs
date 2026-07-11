@@ -185,15 +185,14 @@ impl ConstPropagation {
         match instruction {
             Ir51::Move { dest, src } => self.mov(dest, src),
             Ir51::BinOp { op, dest, lhs, rhs } => self.binop(*op, dest, lhs, rhs),
+            Ir51::Load { dest, .. } => self.dest_to_state(dest, SSAState::Bottom),
             Ir51::BranchIf {
                 cond,
                 true_jmp,
                 false_jmp,
             } => self.branchif(cond, *true_jmp, *false_jmp, block_id),
 
-            Ir51::Store { .. } => todo!(),
-            Ir51::Load { .. } => todo!(),
-
+            Ir51::Store { .. } => {}
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
@@ -338,8 +337,9 @@ impl ConstPropagation {
             BinOp::Ge => todo!(),
             BinOp::Ne => todo!(),
         }
-        .0;
+        .0 & 0xFF;
 
+        // TODO: Don't mask result if dest register is 16bit
         self.dest_to_state(dest, SSAState::Constant(result));
     }
 
@@ -388,8 +388,10 @@ impl ConstPropagation {
             unreachable!()
         };
 
-        for incoming in phi.incoming.values() {
-            self.delta_phi(addr, actual_version, incoming.extract_ssa_version());
+        for (pred_block_id, incoming) in &phi.incoming {
+            if self.reachable_blocks.contains(pred_block_id) {
+                self.delta_phi(addr, actual_version, incoming.extract_ssa_version());
+            }
         }
     }
 

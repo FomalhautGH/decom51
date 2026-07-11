@@ -107,13 +107,15 @@ impl CFGRestorer {
                 | Ir51::Store { .. }
                 | Ir51::Load { .. }
                 | Ir51::Call(_)
-                | Ir51::Nop
-                | Ir51::Return => {
+                | Ir51::Nop => {
                     if i != num_blocks - 1 {
                         block.successors.push(i + 1);
                     }
                 }
 
+                // If it ends with a return it should not have any successors since
+                // the cfg is single for every function
+                Ir51::Return => {}
                 Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }

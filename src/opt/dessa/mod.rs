@@ -1,18 +1,18 @@
 use crate::opt::{
     cfg_restorer::ControlFlowGraph,
     dessa::{
-        coalescing::VariableCoalescing, interference::Interference, liveness::Liveness,
-        phi_elimination::PhiElimination, ssa_mapping::SSAMapping,
+        coalescing::VariableCoalescing, dessa_mapping::DeSSAMapping, interference::Interference,
+        liveness::Liveness, phi_elimination::PhiElimination,
     },
 };
 
 pub struct DeSSA;
 
 mod coalescing;
+mod dessa_mapping;
 mod interference;
 mod liveness;
 mod phi_elimination;
-mod ssa_mapping;
 
 impl DeSSA {
     pub fn execute(cfg: &mut ControlFlowGraph) {
@@ -36,7 +36,7 @@ impl DeSSA {
         let mut interference = Interference::new(&liveness.out_sets);
         let interference_graph = interference.build_graph(cfg);
 
-        let mut dessa = SSAMapping::new(interference_graph);
+        let mut dessa = DeSSAMapping::new(interference_graph);
         dessa.execute(cfg);
     }
 }

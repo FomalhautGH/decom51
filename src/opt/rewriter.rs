@@ -86,8 +86,7 @@ impl<'a> Rewriter<'a> {
                 self.rewrite_operand(value);
             }
 
-            Ir51::Load { dest, src_ptr, .. } => {
-                self.rewrite_operand(dest);
+            Ir51::Load { src_ptr, .. } => {
                 self.rewrite_operand(src_ptr);
             }
 

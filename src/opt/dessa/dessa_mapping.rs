@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::{Ir51, Operand, SSAVar, VarId},
@@ -10,13 +10,13 @@ use crate::{
 
 // Addr mapping tells if for an address there's already a mapping in
 // ssa_mappings and for which SSAVar specifically
-pub struct SSAMapping {
+pub struct DeSSAMapping {
     counter: usize,
     ssa_mappings: HashMap<SSAVar, VarId>,
     interference_graph: InterferenceGraph,
 }
 
-impl SSAMapping {
+impl DeSSAMapping {
     pub fn new(interference_graph: InterferenceGraph) -> Self {
         Self {
             counter: 1,
@@ -89,26 +89,33 @@ impl SSAMapping {
             return;
         }
 
+        // Find all the varid that interefere
         let addr = ssavar.0;
-        let mut interfere = false;
+        let interfering_varids: HashSet<VarId> = self
+            .ssa_mappings
+            .iter()
+            .filter(|m| m.0.0 == addr && do_they_interfere(&self.interference_graph, *m.0, ssavar))
+            .map(|(_, &varid)| varid)
+            .collect();
 
-        // check for mapping for the same address as the ssavar we are trying to map
-        let mut original_id: VarId = 0;
-        for (ssavar_same_addr, varid) in self.ssa_mappings.iter().filter(|m| m.0.0 == addr) {
-            interfere =
-                interfere || do_they_interfere(&self.interference_graph, ssavar, *ssavar_same_addr);
-            original_id = *varid;
-        }
+        // Use the first varid that is not part of the interfering varid as a reuse
+        let reused_id = self
+            .ssa_mappings
+            .iter()
+            .filter(|m| m.0.0 == addr)
+            .map(|(_, &varid)| varid)
+            .find(|varid| !interfering_varids.contains(varid));
 
-        if interfere || original_id == 0 {
+        if let Some(reused_id) = reused_id {
+            self.ssa_mappings.insert(ssavar, reused_id);
+        } else {
             self.ssa_mappings.insert(ssavar, self.counter);
             self.counter += 1;
-        } else {
-            self.ssa_mappings.insert(ssavar, original_id);
         }
     }
 
     fn map_ir(&self, ir: &mut Ir51) {
+        // TODO: Also map tempssavar to something else
         let map = |op: &mut Operand| -> Option<()> {
             let ssaop = op.to_ssavar()?;
             let id = *self.ssa_mappings.get(&ssaop)?;

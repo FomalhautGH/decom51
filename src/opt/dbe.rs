@@ -23,6 +23,13 @@ impl DeadBlockElimination {
     fn cleanup(&self, cfg: &mut ControlFlowGraph) {
         cfg.blocks
             .retain(|block_id, _| self.reached_blocks.contains(block_id));
+
+        // Removes any reference to the unreachable block from the other blocks
+        for block in cfg.blocks.values_mut() {
+            block
+                .predecessors
+                .retain(|blockid| self.reached_blocks.contains(blockid));
+        }
     }
 
     fn visit_cfg(&mut self, cfg: &ControlFlowGraph) {

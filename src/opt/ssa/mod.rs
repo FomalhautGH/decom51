@@ -486,8 +486,7 @@ impl SSABuilder {
             for &pred in &b.predecessors {
                 let mut it = pred;
                 while it != dominator {
-                    let affected_blocks = frontiers.get_mut(&pred);
-                    if let Some(affected_blocks) = affected_blocks {
+                    if let Some(affected_blocks) = frontiers.get_mut(&it) {
                         affected_blocks.insert(b.id);
                     }
 

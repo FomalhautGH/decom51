@@ -26,8 +26,9 @@ impl PhiElimination {
 
         // Modify edges for critical edged and add new blocks to the cfg
         for (edge, new_blockid) in &self.new_edges {
-            let from_block = cfg.blocks.get_mut(&edge.fromid).unwrap();
-            Self::critical_edge(from_block, *new_blockid, edge.toid);
+            let [from_block, to_block] = cfg.blocks.get_disjoint_mut([&edge.fromid, &edge.toid]);
+            let [from_block, to_block] = [from_block.unwrap(), to_block.unwrap()];
+            Self::critical_edge(from_block, *new_blockid, to_block);
         }
 
         // Clean up all the phis
@@ -46,31 +47,46 @@ impl PhiElimination {
     fn eliminate_phis(&mut self, block: &BasicBlock, cfg: &mut ControlFlowGraph) {
         let mut block_idx = cfg.blocks.len();
 
+        // TODO: clean up this code
         for phi in &block.phis {
             for (from, incoming) in &phi.incoming {
-                let from_block = cfg.blocks.get_mut(from).unwrap();
+                if *from == block.id {
+                    continue;
+                } // Why do i have to put this??
+                let [from_block, to_block] = cfg.blocks.get_disjoint_mut([from, &block.id]);
+                let [from_block, to_block] = [from_block.unwrap(), to_block.unwrap()];
 
-                if from_block.successors.len() > 1 && 1 < block.predecessors.len() {
-                    let key = CriticalEdgeInfo {
-                        fromid: from_block.id,
-                        toid: block.id,
-                    };
+                if from_block.successors.len() > 1 {
+                    if 1 < block.predecessors.len() {
+                        let key = CriticalEdgeInfo {
+                            fromid: from_block.id,
+                            toid: block.id,
+                        };
 
-                    let middle_blockid = self.new_edges.entry(key).or_insert_with(|| {
-                        let mut new_block = BasicBlock::new(block_idx);
-                        new_block.irs.push(Ir51::Jump(block.id));
+                        let middle_blockid = self.new_edges.entry(key).or_insert_with(|| {
+                            let mut new_block = BasicBlock::new(block_idx);
+                            new_block.irs.push(Ir51::Jump(block.id));
 
-                        new_block.predecessors.push(*from);
-                        new_block.successors.push(block.id);
+                            new_block.predecessors.push(*from);
+                            new_block.successors.push(block.id);
 
-                        cfg.blocks.insert(new_block.id, new_block);
+                            cfg.blocks.insert(new_block.id, new_block);
 
-                        block_idx += 1;
-                        block_idx - 1
-                    });
+                            block_idx += 1;
+                            block_idx - 1
+                        });
 
-                    let middle_block = cfg.blocks.get_mut(middle_blockid).unwrap();
-                    Self::insert_move(&mut middle_block.irs, phi.operand, *incoming);
+                        let middle_block = cfg.blocks.get_mut(middle_blockid).unwrap();
+                        Self::insert_move(&mut middle_block.irs, phi.operand, *incoming);
+                    } else {
+                        to_block.irs.insert(
+                            0,
+                            Ir51::Move {
+                                dest: phi.operand,
+                                src: *incoming,
+                            },
+                        );
+                    }
                 } else {
                     Self::insert_move(&mut from_block.irs, phi.operand, *incoming);
                 }
@@ -78,17 +94,25 @@ impl PhiElimination {
         }
     }
 
-    fn critical_edge(block: &mut BasicBlock, middle_blockid: BlockId, to_block: BlockId) {
+    fn critical_edge(
+        from_block: &mut BasicBlock,
+        middle_blockid: BlockId,
+        to_block: &mut BasicBlock,
+    ) {
         // If a block has more than one successor then it MUST have at least
         // one ir and the last one MUST be a branchif (for now)
-        match block.irs.last_mut().expect("Empty block for some reason") {
+        match from_block
+            .irs
+            .last_mut()
+            .expect("Empty block for some reason")
+        {
             Ir51::BranchIf {
                 true_jmp,
                 false_jmp,
                 ..
             } => {
-                let is_true = *true_jmp == to_block;
-                let is_false = *false_jmp == to_block;
+                let is_true = *true_jmp == to_block.id;
+                let is_false = *false_jmp == to_block.id;
 
                 if is_true {
                     *true_jmp = middle_blockid;
@@ -97,15 +121,21 @@ impl PhiElimination {
                 }
 
                 if !is_true && !is_false {
-                    unreachable!("BranchIf {{{true_jmp}, {false_jmp}}} but found {to_block}");
+                    unreachable!();
                 }
             }
             _ => unreachable!("Only beanchifs can be the last instruction of a critical edge"),
         }
 
-        for suc in &mut block.successors {
-            if *suc == to_block {
+        for suc in &mut from_block.successors {
+            if *suc == to_block.id {
                 *suc = middle_blockid;
+            }
+        }
+
+        for pred in &mut to_block.predecessors {
+            if *pred == from_block.id {
+                *pred = middle_blockid;
             }
         }
     }
