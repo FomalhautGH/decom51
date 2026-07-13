@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    common::{Ir51, Operand, SSAVar, VarId},
+    common::{Ir51, Operand, Phi, SSAVar, VarId},
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
         dessa::interference::{InterferenceGraph, do_they_interfere},
@@ -27,12 +27,18 @@ impl DeSSAMapping {
 
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         for block in cfg.blocks.values() {
+            for phi in &block.phis {
+                self.analyze_phi(phi);
+            }
             for ir in &block.irs {
                 self.analyze_ir(ir);
             }
         }
 
         for block in cfg.blocks.values_mut() {
+            for phi in &mut block.phis {
+                self.map_phi(phi);
+            }
             for ir in &mut block.irs {
                 self.map_ir(ir);
             }
@@ -45,6 +51,13 @@ impl DeSSAMapping {
             for block in sorted_blocks {
                 print!("{}", block);
             }
+        }
+    }
+
+    fn analyze_phi(&mut self, phi: &Phi) {
+        self.analyze_operand(&phi.operand);
+        for (_, incoming) in &phi.incoming {
+            self.analyze_operand(incoming);
         }
     }
 
@@ -113,47 +126,54 @@ impl DeSSAMapping {
         }
     }
 
+    fn map_phi(&self, phi: &mut Phi) {
+        self.map(&mut phi.operand);
+        for (_, incoming) in &mut phi.incoming {
+            self.map(incoming);
+        }
+    }
+
     fn map_ir(&self, ir: &mut Ir51) {
-        // TODO: Also map tempssavar to something else
-        let map = |op: &mut Operand| -> Option<()> {
-            let ssaop = op.to_ssavar()?;
-            let id = *self.ssa_mappings.get(&ssaop)?;
-
-            *op = Operand::Var(id);
-
-            Some(())
-        };
-
         match ir {
             Ir51::Move { dest, src } => {
-                map(dest);
-                map(src);
+                self.map(dest);
+                self.map(src);
             }
 
             Ir51::BinOp { dest, lhs, rhs, .. } => {
-                map(lhs);
-                map(rhs);
-                map(dest);
+                self.map(lhs);
+                self.map(rhs);
+                self.map(dest);
             }
 
             Ir51::Store {
                 dest_ptr, value, ..
             } => {
-                map(dest_ptr);
-                map(value);
+                self.map(dest_ptr);
+                self.map(value);
             }
 
             Ir51::Load { dest, src_ptr, .. } => {
-                map(src_ptr);
-                map(dest);
+                self.map(src_ptr);
+                self.map(dest);
             }
 
             Ir51::BranchIf { cond, .. } => {
-                map(cond);
+                self.map(cond);
             }
 
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
             Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
+    }
+
+    fn map(&self, op: &mut Operand) -> Option<()> {
+        // TODO: Also map tempssavar to something else
+        let ssaop = op.to_ssavar()?;
+        let id = *self.ssa_mappings.get(&ssaop)?;
+
+        *op = Operand::Var(id);
+
+        Some(())
     }
 }

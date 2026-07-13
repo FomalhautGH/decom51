@@ -1,8 +1,11 @@
 use crate::opt::{
     cfg_restorer::ControlFlowGraph,
     dessa::{
-        coalescing::VariableCoalescing, dessa_mapping::DeSSAMapping, interference::Interference,
-        liveness::Liveness, phi_elimination::PhiElimination,
+        coalescing::VariableCoalescing,
+        dessa_mapping::DeSSAMapping,
+        interference::{Interference, InterferenceGraph},
+        liveness::Liveness,
+        phi_elimination::PhiElimination,
     },
 };
 
@@ -17,26 +20,25 @@ mod phi_elimination;
 impl DeSSA {
     pub fn execute(cfg: &mut ControlFlowGraph) {
         // TODO: maybe put the cfg directly in the fields of the respective structs
-        let mut liveness = Liveness::new(cfg);
-        liveness.analysis(cfg);
+        let mut graph = Self::build_interference_graph(cfg);
 
-        let mut interference = Interference::new(&liveness.out_sets);
-        let interference_graph = interference.build_graph(cfg);
-
-        let mut phi_elimination = PhiElimination::default();
-        phi_elimination.eliminate(cfg);
-
-        let mut coalescing = VariableCoalescing::new(interference_graph);
+        let mut coalescing = VariableCoalescing::new(graph);
         coalescing.execute(cfg);
 
-        // Recreate intereference graph after coalescing
+        graph = Self::build_interference_graph(cfg);
+
+        let mut dessa = DeSSAMapping::new(graph);
+        dessa.execute(cfg);
+
+        let mut phi_elimination = PhiElimination::new(cfg);
+        phi_elimination.eliminate(cfg);
+    }
+
+    fn build_interference_graph(cfg: &ControlFlowGraph) -> InterferenceGraph {
         let mut liveness = Liveness::new(cfg);
         liveness.analysis(cfg);
 
         let mut interference = Interference::new(&liveness.out_sets);
-        let interference_graph = interference.build_graph(cfg);
-
-        let mut dessa = DeSSAMapping::new(interference_graph);
-        dessa.execute(cfg);
+        interference.build_graph(cfg)
     }
 }
