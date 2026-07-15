@@ -56,7 +56,7 @@ impl DeSSAMapping {
 
     fn analyze_phi(&mut self, phi: &Phi) {
         self.analyze_operand(&phi.operand);
-        for (_, incoming) in &phi.incoming {
+        for incoming in phi.incoming.values() {
             self.analyze_operand(incoming);
         }
     }
@@ -128,7 +128,7 @@ impl DeSSAMapping {
 
     fn map_phi(&self, phi: &mut Phi) {
         self.map(&mut phi.operand);
-        for (_, incoming) in &mut phi.incoming {
+        for incoming in phi.incoming.values_mut() {
             self.map(incoming);
         }
     }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::common::{AddrSpace, BinOp, Ir51, Operand, Register};
 use crate::syntax::{Argument, Instruction};
@@ -92,10 +92,73 @@ impl Lifter {
             ir_code[i] = ir;
         }
 
-        self.shift_jumps(ir_code);
+        self.invalid_jumps(ir_code);
+        self.patch_jumps(ir_code);
     }
 
-    fn shift_jumps(&mut self, ir_code: &mut Vec<Ir51>) {
+    fn invalid_jumps(&mut self, ir_code: &mut Vec<Ir51>) -> Option<()> {
+        let saved_jumps = self.save_jumps(ir_code);
+
+        for i in 1..ir_code.len() {
+            let prev_i = i - 1;
+            let [prev_ir, ir] = ir_code.get_disjoint_mut([prev_i, i]).ok()?;
+
+            match ir {
+                Ir51::Jump(label) => {
+                    if !saved_jumps.contains(label) && prev_ir.is_flow_terminator() {
+                        *ir = Ir51::InvalidIr;
+                    }
+                }
+
+                Ir51::BranchIf { .. } => {}
+                Ir51::Move { .. } => {}
+                Ir51::BinOp { .. } => {}
+                Ir51::Store { .. } => {}
+                Ir51::Load { .. } => {}
+                Ir51::Call(_) => {}
+                Ir51::Return => {}
+                Ir51::Nop => {}
+
+                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
+            }
+        }
+
+        Some(())
+    }
+
+    fn save_jumps(&self, ir_code: &Vec<Ir51>) -> HashSet<usize> {
+        let mut saved_jumps = HashSet::new();
+
+        for ir in ir_code {
+            match ir {
+                Ir51::BranchIf {
+                    true_jmp,
+                    false_jmp,
+                    ..
+                } => {
+                    saved_jumps.insert(*true_jmp);
+                    saved_jumps.insert(*false_jmp);
+                }
+
+                Ir51::Jump(label) => {
+                    saved_jumps.insert(*label);
+                }
+
+                Ir51::Move { .. } => {}
+                Ir51::BinOp { .. } => {}
+                Ir51::Store { .. } => {}
+                Ir51::Load { .. } => {}
+                Ir51::Call(_) => {}
+                Ir51::Return => {}
+                Ir51::Nop => {}
+                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
+            }
+        }
+
+        saved_jumps
+    }
+
+    fn patch_jumps(&mut self, ir_code: &mut Vec<Ir51>) {
         let mut index_map = HashMap::new();
         let mut real_index = 0;
 
@@ -142,7 +205,6 @@ impl Lifter {
         let ir = ir_code.get_mut(jmp_index)?;
 
         if let Ir51::Jump(jmp) = *ir {
-            *ir = Ir51::InvalidIr;
             Some(jmp)
         } else {
             None

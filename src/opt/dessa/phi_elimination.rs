@@ -1,11 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi},
-    opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
-        dessa::DeSSA,
-    },
+    common::{BlockId, Ir51, Operand},
+    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -28,7 +25,7 @@ pub struct PhiElimination {
 impl PhiElimination {
     pub fn new(cfg: &ControlFlowGraph) -> Self {
         Self {
-            block_idx_counter: cfg.blocks.len(),
+            block_idx_counter: cfg.blocks.keys().max().unwrap_or(&0) + 1,
             new_edges: HashMap::new(),
         }
     }
@@ -65,7 +62,7 @@ impl PhiElimination {
         let mut final_list: PhiList = HashMap::new();
 
         for phi in &block.phis {
-            for (from_blockid, incoming_operand) in &phi.incoming {
+            for from_blockid in phi.incoming.keys() {
                 phi_list.insert(*from_blockid, Vec::new());
                 final_list.insert(*from_blockid, Vec::new());
             }

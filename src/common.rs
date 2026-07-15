@@ -149,6 +149,23 @@ pub enum Ir51 {
     InvalidIr,
 }
 
+impl Ir51 {
+    pub fn is_flow_terminator(&self) -> bool {
+        match self {
+            Ir51::Jump(_) | Ir51::Return => true,
+
+            Ir51::Move { .. }
+            | Ir51::BinOp { .. }
+            | Ir51::Store { .. }
+            | Ir51::Load { .. }
+            | Ir51::BranchIf { .. }
+            | Ir51::Call(_)
+            | Ir51::Nop
+            | Ir51::InvalidIr => false,
+        }
+    }
+}
+
 pub type BlockId = usize;
 
 // This type represents the predecessor blocks where the SSAVar comes from,
