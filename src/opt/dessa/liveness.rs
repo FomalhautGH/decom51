@@ -160,7 +160,6 @@ impl Liveness {
             Ir51::BranchIf { cond, .. } => self.save_use(cond, blockid),
 
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
-            Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
 

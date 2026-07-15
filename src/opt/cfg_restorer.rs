@@ -119,7 +119,6 @@ impl CFGRestorer {
                 // If it ends with a return it should not have any successors since
                 // the cfg is single for every function
                 Ir51::Return => {}
-                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }
     }
@@ -192,7 +191,6 @@ impl CFGRestorer {
                 | Ir51::Call(_)
                 | Ir51::Return
                 | Ir51::Nop => {}
-                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             };
         }
 

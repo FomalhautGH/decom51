@@ -127,7 +127,6 @@ impl<'a> Interference<'a> {
             Ir51::BranchIf { cond, .. } => self.add_read(cond, liveset),
 
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
-            Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
 

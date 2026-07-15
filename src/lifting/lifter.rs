@@ -106,7 +106,7 @@ impl Lifter {
             match ir {
                 Ir51::Jump(label) => {
                     if !saved_jumps.contains(label) && prev_ir.is_flow_terminator() {
-                        *ir = Ir51::InvalidIr;
+                        *ir = Ir51::Nop;
                     }
                 }
 
@@ -118,8 +118,6 @@ impl Lifter {
                 Ir51::Call(_) => {}
                 Ir51::Return => {}
                 Ir51::Nop => {}
-
-                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }
 
@@ -151,7 +149,6 @@ impl Lifter {
                 Ir51::Call(_) => {}
                 Ir51::Return => {}
                 Ir51::Nop => {}
-                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }
 
@@ -164,14 +161,14 @@ impl Lifter {
 
         // We track the shifted indices before retaining
         for (i, ir) in ir_code.iter().enumerate() {
-            if !matches!(ir, Ir51::InvalidIr) {
+            if !matches!(ir, Ir51::Nop) {
                 index_map.insert(i, real_index);
                 real_index += 1;
             }
         }
 
         // Retain
-        ir_code.retain(|ir| !matches!(ir, Ir51::InvalidIr));
+        ir_code.retain(|ir| !matches!(ir, Ir51::Nop));
 
         // Pathing
         for ir in ir_code {
@@ -196,7 +193,6 @@ impl Lifter {
                 Ir51::Call(_) => {}
                 Ir51::Return => {}
                 Ir51::Nop => {}
-                Ir51::InvalidIr => unreachable!("Invalid IR touched"),
             }
         }
     }

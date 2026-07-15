@@ -228,8 +228,6 @@ impl PhiElimination {
                 Ir51::Load { .. } |
                 Ir51::Return |
                 Ir51::Nop => {}
-
-                Ir51::InvalidIr => unreachable!("Invalid IR Touched")
             }
 
             irs.insert(irs_len - shift, mov);

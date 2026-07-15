@@ -179,7 +179,6 @@ impl ConstPropagation {
             Ir51::BranchIf { cond, .. } => insert(cond),
 
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
-            Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
 
@@ -223,7 +222,6 @@ impl ConstPropagation {
 
             Ir51::Store { .. } => {}
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
-            Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
 
@@ -276,7 +274,6 @@ impl ConstPropagation {
                 }
 
                 Ir51::Nop | Ir51::Call(_) | Ir51::Return => is_last_jump = false,
-                Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
             }
         }
 
@@ -521,7 +518,6 @@ impl ConstPropagation {
             }
 
             Ir51::Nop | Ir51::Call(_) | Ir51::Return | Ir51::Jump(_) => {}
-            Ir51::InvalidIr => unreachable!("Invalid IR touched"),
         }
     }
 

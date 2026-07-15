@@ -107,7 +107,6 @@ impl VariableCoalescing {
             Ir51::BranchIf { cond, .. } => replace(cond),
 
             Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return | Ir51::Nop => {}
-            Ir51::InvalidIr => unreachable!("Invalid IR Touched"),
         }
     }
 

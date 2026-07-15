@@ -146,7 +146,6 @@ pub enum Ir51 {
     Return,
 
     Nop,
-    InvalidIr,
 }
 
 impl Ir51 {
@@ -160,8 +159,7 @@ impl Ir51 {
             | Ir51::Load { .. }
             | Ir51::BranchIf { .. }
             | Ir51::Call(_)
-            | Ir51::Nop
-            | Ir51::InvalidIr => false,
+            | Ir51::Nop => false,
         }
     }
 }
@@ -280,7 +278,6 @@ impl Display for Ir51 {
             Ir51::Call(label) => write!(f, "call Block_{}", label),
             Ir51::Return => write!(f, "ret"),
             Ir51::Nop => write!(f, "nop"),
-            Ir51::InvalidIr => write!(f, "invalid"),
         }
     }
 }
