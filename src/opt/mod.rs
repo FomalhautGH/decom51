@@ -3,6 +3,7 @@ use crate::{
     opt::{
         cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
         dce::DeadCodeElimination, dessa::DeSSA, rewriter::Rewriter, ssa::SSABuilder,
+        vwa::VariableWidthAggregation,
     },
 };
 
@@ -13,6 +14,7 @@ mod dce;
 mod dessa;
 mod rewriter;
 mod ssa;
+mod vwa;
 
 pub struct Optimizer;
 
@@ -36,5 +38,8 @@ impl Optimizer {
         dce.execute(&mut cfg);
 
         DeSSA::execute(&mut cfg);
+
+        let mut vwa = VariableWidthAggregation::default();
+        vwa.execute(&mut cfg);
     }
 }

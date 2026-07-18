@@ -352,12 +352,11 @@ impl ConstPropagation {
 
     fn dest_to_binop_result(&mut self, op: BinOp, dest: &Operand, lhs: Constant, rhs: Constant) {
         let result = match op {
-            BinOp::BorrowOut => ((lhs < rhs) as u16, false),
+            BinOp::Lt => ((lhs < rhs) as u16, false),
             BinOp::Eq => ((lhs == rhs) as u16, false),
             BinOp::Add => lhs.overflowing_add(rhs),
             BinOp::Sub => lhs.overflowing_sub(rhs),
             BinOp::Or => ((lhs != 0 || rhs != 0) as u16, false),
-            BinOp::Lt => todo!(),
             BinOp::Gt => todo!(),
             BinOp::Le => todo!(),
             BinOp::Ge => todo!(),
@@ -536,7 +535,8 @@ impl ConstPropagation {
             Operand::Address(_, _)
             | Operand::Temporary(_)
             | Operand::Register(_)
-            | Operand::Var(_) => {
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => {
                 unreachable!("{operand:?}")
             }
         };

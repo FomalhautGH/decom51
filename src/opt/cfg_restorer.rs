@@ -36,9 +36,12 @@ pub struct ControlFlowGraph {
 }
 
 impl ControlFlowGraph {
-    pub fn remove_nops(&mut self) {
+    pub fn remove_useless_irs(&mut self) {
         // TODO: Use a better null operand for the phis
         for block in self.blocks.values_mut() {
+            block
+                .irs
+                .retain(|ir| !matches!(ir, Ir51::Move { dest, src } if dest == src));
             block.irs.retain(|ir| !matches!(ir, Ir51::Nop));
             block
                 .phis

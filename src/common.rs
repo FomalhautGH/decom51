@@ -57,9 +57,9 @@ pub type VarId = usize;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Operand {
-    Register(Register),
-
     Constant(Constant),
+
+    Register(Register),
 
     Temporary(TempIndex),
     TempSSAVar { index: TempIndex, version: Version },
@@ -68,6 +68,7 @@ pub enum Operand {
     SSAVar { addr: Addr, version: Version },
 
     Var(VarId),
+    Concat(VarId, VarId),
 }
 
 impl Operand {
@@ -80,7 +81,8 @@ impl Operand {
             | Operand::Constant(_)
             | Operand::Temporary(_)
             | Operand::Address(_, _)
-            | Operand::Var(_) => unreachable!("{self:?}"),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!("{self:?}"),
         }
     }
 
@@ -104,9 +106,39 @@ pub enum BinOp {
     Le,
     Ge,
     Ne,
-
     Or,
-    BorrowOut, // lhs < rhs
+}
+
+impl BinOp {
+    pub fn is_math_op(self) -> bool {
+        match self {
+            BinOp::Add => true,
+            BinOp::Sub => true,
+
+            BinOp::Eq => false,
+            BinOp::Lt => false,
+            BinOp::Gt => false,
+            BinOp::Le => false,
+            BinOp::Ge => false,
+            BinOp::Ne => false,
+            BinOp::Or => false,
+        }
+    }
+
+    pub fn is_glue_op(self) -> bool {
+        match self {
+            BinOp::Add => false,
+            BinOp::Sub => false,
+
+            BinOp::Eq => false,
+            BinOp::Lt => true,
+            BinOp::Gt => false,
+            BinOp::Le => false,
+            BinOp::Ge => false,
+            BinOp::Ne => false,
+            BinOp::Or => true,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -133,18 +165,16 @@ pub enum Ir51 {
         src_ptr: Operand,
     },
 
-    Jump(usize),
-
     BranchIf {
         cond: Operand,
         true_jmp: usize,
         false_jmp: usize,
     },
 
+    Jump(usize),
+
     Call(usize),
-
     Return,
-
     Nop,
 }
 
@@ -217,6 +247,7 @@ impl Display for Operand {
                 write!(f, "{}_{}", format_addr(*addr), version)
             }
             Operand::Var(id) => write!(f, "v{}", id),
+            Operand::Concat(high, low) => write!(f, "concat(v{}, v{})", high, low),
         }
     }
 }
@@ -233,7 +264,6 @@ impl Display for BinOp {
             BinOp::Ge => write!(f, ">="),
             BinOp::Ne => write!(f, "!="),
             BinOp::Or => write!(f, "|"),
-            BinOp::BorrowOut => write!(f, "borrow_out"),
         }
     }
 }
@@ -243,11 +273,7 @@ impl Display for Ir51 {
         match self {
             Ir51::Move { dest, src } => write!(f, "{} = {}", dest, src),
             Ir51::BinOp { op, dest, lhs, rhs } => {
-                if matches!(op, BinOp::BorrowOut) {
-                    write!(f, "{} = borrow_out({}, {})", dest, lhs, rhs)
-                } else {
-                    write!(f, "{} = {} {} {}", dest, lhs, op, rhs)
-                }
+                write!(f, "{} = {} {} {}", dest, lhs, op, rhs)
             }
             Ir51::Store {
                 space,

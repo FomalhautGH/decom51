@@ -176,7 +176,8 @@ impl Liveness {
             Operand::Address(_, _)
             | Operand::Register(_)
             | Operand::Temporary(_)
-            | Operand::Var(_) => unreachable!(),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!(),
         }
     }
 
@@ -196,7 +197,8 @@ impl Liveness {
             Operand::Address(_, _)
             | Operand::Register(_)
             | Operand::Temporary(_)
-            | Operand::Var(_) => unreachable!(),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!(),
         }
     }
 }

@@ -321,7 +321,7 @@ impl Lifter {
 
         vec![
             Ir51::BinOp {
-                op: BinOp::BorrowOut,
+                op: BinOp::Lt,
                 dest: Operand::Temporary(1),
                 lhs: dest,
                 rhs: src,
@@ -333,7 +333,7 @@ impl Lifter {
                 rhs: src,
             },
             Ir51::BinOp {
-                op: BinOp::BorrowOut,
+                op: BinOp::Lt,
                 dest: Operand::Temporary(2),
                 lhs: Operand::Temporary(0),
                 rhs: Operand::Register(Register::C),

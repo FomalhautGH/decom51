@@ -47,6 +47,9 @@ impl PhiElimination {
             block.phis.clear();
         }
 
+        // TODO: Move this somewhere else
+        cfg.remove_useless_irs();
+
         if cfg!(debug_assertions) {
             println!("======================== PHI ELIMINATION ========================");
             let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();

@@ -319,7 +319,8 @@ impl SSABuilder {
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Var(_) => *op,
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => *op,
         }
     }
 
@@ -369,7 +370,8 @@ impl SSABuilder {
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Var(_) => *op,
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => *op,
         }
     }
 

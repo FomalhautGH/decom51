@@ -108,7 +108,8 @@ impl<'a> Rewriter<'a> {
             Operand::Register(_)
             | Operand::Temporary(_)
             | Operand::Address(_, _)
-            | Operand::Var(_) => unreachable!(),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!(),
         }
     }
 
@@ -137,7 +138,8 @@ impl<'a> Rewriter<'a> {
             Operand::Register(_)
             | Operand::Temporary(_)
             | Operand::Address(_, _)
-            | Operand::Var(_) => unreachable!(),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!(),
         }
     }
 }

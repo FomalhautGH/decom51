@@ -1,7 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    common::{Ir51, Operand, Phi, SSAVar, VarId},
+    common::{
+        Ir51,
+        Operand::{self, Temporary},
+        Phi, SSAVar, VarId,
+    },
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
         dessa::interference::{InterferenceGraph, do_they_interfere},
@@ -166,12 +170,25 @@ impl DeSSAMapping {
     }
 
     fn map(&self, op: &mut Operand) -> Option<()> {
-        // TODO: Also map tempssavar to something else
-        let ssaop = op.to_ssavar()?;
-        let id = *self.ssa_mappings.get(&ssaop)?;
+        match op {
+            Operand::SSAVar { addr, version } => {
+                let ssaop = (*addr, *version);
+                let id = *self.ssa_mappings.get(&ssaop)?;
+                *op = Operand::Var(id);
+                Some(())
+            }
 
-        *op = Operand::Var(id);
+            Operand::TempSSAVar { index, version } => {
+                *op = Temporary(*index);
+                Some(())
+            }
 
-        Some(())
+            Operand::Register(_)
+            | Operand::Constant(_)
+            | Operand::Temporary(_)
+            | Operand::Address(_, _)
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => None,
+        }
     }
 }

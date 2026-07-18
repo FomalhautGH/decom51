@@ -80,7 +80,7 @@ impl DeadCodeElimination {
         }
 
         // Cleanup all the nops
-        cfg.remove_nops();
+        cfg.remove_useless_irs();
     }
 
     fn delete_instruction(&mut self, cfg: &mut ControlFlowGraph, block_id: BlockId, index: usize) {
@@ -143,7 +143,8 @@ impl DeadCodeElimination {
             Operand::Register(_)
             | Operand::Temporary(_)
             | Operand::Address(_, _)
-            | Operand::Var(_) => unreachable!(),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!(),
         }
     }
 
@@ -226,7 +227,8 @@ impl DeadCodeElimination {
             | Operand::Constant(_)
             | Operand::Temporary(_)
             | Operand::Register(_)
-            | Operand::Var(_) => {
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => {
                 unreachable!("{dest:?}")
             }
         };
@@ -314,7 +316,8 @@ impl DeadCodeElimination {
             Operand::Address(_, _)
             | Operand::Register(_)
             | Operand::Temporary(_)
-            | Operand::Var(_) => unreachable!(),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!(),
         }
     }
 
@@ -338,7 +341,8 @@ impl DeadCodeElimination {
             Operand::Register(_)
             | Operand::Temporary(_)
             | Operand::Address(_, _)
-            | Operand::Var(_) => unreachable!(),
+            | Operand::Var(_)
+            | Operand::Concat(_, _) => unreachable!(),
         }
     }
 }

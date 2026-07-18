@@ -53,7 +53,7 @@ impl VariableCoalescing {
         }
 
         self.renaming(cfg);
-        cfg.remove_nops();
+        cfg.remove_useless_irs();
 
         if cfg!(debug_assertions) {
             println!("======================== VARIABLE COALESCING ========================");
