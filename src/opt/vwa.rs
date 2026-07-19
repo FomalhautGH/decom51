@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::{
     common::{BinOp, Constant, Ir51, Operand, TempIndex, VarId},
@@ -28,8 +28,7 @@ impl Argument {
             Operand::Register(_)
             | Operand::TempSSAVar { .. }
             | Operand::Address(_, _)
-            | Operand::SSAVar { .. }
-            | Operand::Concat(_, _) => unreachable!(),
+            | Operand::SSAVar { .. } => unreachable!(),
         }
     }
 

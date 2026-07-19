@@ -178,7 +178,7 @@ impl DeSSAMapping {
                 Some(())
             }
 
-            Operand::TempSSAVar { index, version } => {
+            Operand::TempSSAVar { index, .. } => {
                 *op = Temporary(*index);
                 Some(())
             }
