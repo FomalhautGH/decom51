@@ -8,6 +8,8 @@ use crate::{
 // This phase does edge contration for blocks with just one jump
 pub struct EmptyBlockElimination;
 
+// TODO: We might use this phase do to edge contraction after creating the blocks
+// insted of doind it in the lifter
 impl EmptyBlockElimination {
     pub fn execute(cfg: &mut ControlFlowGraph) {
         let substitution_map = Self::find_substitutes(cfg);
@@ -22,6 +24,22 @@ impl EmptyBlockElimination {
 
             for ir in block.irs.iter_mut() {
                 Self::substitute_refs(ir, map);
+            }
+        }
+
+        // Fix predecessors of the empty block
+        for empty_block in map.keys() {
+            let empty_block = cfg.blocks.get(empty_block).unwrap();
+
+            let empty_block_id = empty_block.id;
+            let predecessors = empty_block.predecessors.to_owned();
+
+            for block in cfg.blocks.values_mut() {
+                if block.predecessors.contains(&empty_block_id) {
+                    block
+                        .predecessors
+                        .extend_from_slice(predecessors.as_slice());
+                }
             }
         }
     }
@@ -67,7 +85,9 @@ impl EmptyBlockElimination {
     }
 
     fn find_substitute(block: &BasicBlock) -> Option<BlockId> {
-        if let [Ir51::Jump(sub)] = block.irs[..] {
+        if let [Ir51::Jump(sub)] = block.irs[..]
+            && block.id != sub
+        {
             Some(sub)
         } else {
             None

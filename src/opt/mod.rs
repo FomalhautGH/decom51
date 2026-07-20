@@ -45,7 +45,7 @@ impl Optimizer {
         let mut dbe = DeadBlockElimination::default();
         dbe.execute(&mut cfg);
 
-        let mut vwa = VariableWidthAggregation::default();
+        let mut vwa = VariableWidthAggregation;
         vwa.execute(&mut cfg);
     }
 }

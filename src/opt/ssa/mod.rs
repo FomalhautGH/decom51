@@ -1,14 +1,13 @@
 use crate::{
     common::{Addr, AddrSpace, BlockId, Ir51, Operand, Phi, TempIndex, format_addr},
-    opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
-        ssa::chk_algorithm::{CHKAlgorithm, Dominators},
-    },
+    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Display, Formatter, Result},
 };
+
+pub use crate::opt::ssa::chk_algorithm::{CHKAlgorithm, Dominators};
 
 mod chk_algorithm;
 

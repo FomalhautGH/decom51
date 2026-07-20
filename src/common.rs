@@ -127,16 +127,16 @@ impl BinOp {
 
     pub fn is_glue_op(self) -> bool {
         match self {
+            BinOp::Or => true,
+            BinOp::Lt => true,
+
             BinOp::Add => false,
             BinOp::Sub => false,
-
             BinOp::Eq => false,
-            BinOp::Lt => true,
             BinOp::Gt => false,
             BinOp::Le => false,
             BinOp::Ge => false,
             BinOp::Ne => false,
-            BinOp::Or => true,
         }
     }
 }
@@ -247,7 +247,7 @@ impl Display for Operand {
                 write!(f, "{}_{}", format_addr(*addr), version)
             }
             Operand::Var(id) => write!(f, "v{}", id),
-            Operand::Concat(high, low) => write!(f, "concat(v{}, v{})", high, low),
+            Operand::Concat(low, high) => write!(f, "concat(v{}, v{})", low, high),
         }
     }
 }
