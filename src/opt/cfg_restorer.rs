@@ -37,7 +37,7 @@ pub struct ControlFlowGraph {
 
 impl ControlFlowGraph {
     pub fn remove_useless_irs(&mut self) {
-        // TODO: Use a better null operand for the phis
+        // TODO: Use a better 'null' operand for the phis
         for block in self.blocks.values_mut() {
             block
                 .irs

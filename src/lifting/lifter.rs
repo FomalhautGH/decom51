@@ -253,41 +253,12 @@ impl Lifter {
         ]
     }
 
-    fn push(&mut self, iram_addr: u8) -> Vec<Ir51> {
-        vec![
-            Ir51::BinOp {
-                op: BinOp::Add,
-                dest: Operand::Register(Register::SP),
-                lhs: Operand::Register(Register::SP),
-                rhs: Operand::Constant(1),
-            },
-            Ir51::Load {
-                space: AddrSpace::iData,
-                dest: Operand::Temporary(0),
-                src_ptr: Operand::Address(iram_addr.into(), AddrSpace::iData),
-            },
-            Ir51::Store {
-                space: AddrSpace::iData,
-                dest_ptr: Operand::Register(Register::SP),
-                value: Operand::Temporary(0),
-            },
-        ]
+    fn push(&mut self, value: u8) -> Vec<Ir51> {
+        Ir51::generate_push(Operand::Address(value.into(), AddrSpace::iData), 1)
     }
 
     fn pop(&mut self, value: u8) -> Vec<Ir51> {
-        vec![
-            Ir51::Load {
-                space: AddrSpace::iData,
-                dest: Operand::Address(value.into(), AddrSpace::iData),
-                src_ptr: Operand::Register(Register::SP),
-            },
-            Ir51::BinOp {
-                op: BinOp::Sub,
-                dest: Operand::Register(Register::SP),
-                lhs: Operand::Register(Register::SP),
-                rhs: Operand::Constant(1),
-            },
-        ]
+        Ir51::generate_pop(Operand::Address(value.into(), AddrSpace::iData), 1)
     }
 
     fn jump(&mut self, label: usize) -> Vec<Ir51> {

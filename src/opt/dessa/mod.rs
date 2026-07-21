@@ -19,7 +19,8 @@ mod phi_elimination;
 
 impl DeSSA {
     pub fn execute(cfg: &mut ControlFlowGraph) {
-        // TODO: maybe put the cfg directly in the fields of the respective structs
+        // TODO: maybe put the cfg directly in the fields of the respective structs by
+        // creating the respective methods in Control Flow Graph
         let mut graph = Self::build_interference_graph(cfg);
 
         let mut coalescing = VariableCoalescing::new(graph);

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    common::{BinOp, BlockId, Constant, Ir51, Operand, TempIndex, VarId},
+    common::{AddrSpace, BinOp, BlockId, Constant, Ir51, Operand, Register, TempIndex, VarId},
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
         ssa::{CHKAlgorithm, Dominators},
@@ -110,9 +110,6 @@ pub struct VariableWidthAggregation;
 // TODO: this phase probably needs to be more general
 impl VariableWidthAggregation {
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
-        let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
-        let immediate_dominators = CHKAlgorithm::execute(&shared_blocks);
-
         let mut modified = true;
         while modified {
             modified = false;
@@ -121,12 +118,13 @@ impl VariableWidthAggregation {
                 modified |= self.aggregate_intra_block(block);
             }
 
+            let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            let immediate_dominators = CHKAlgorithm::execute(&shared_blocks);
             modified |= self.fuse_loop_increments(cfg, &immediate_dominators);
         }
 
         if cfg!(debug_assertions) {
             println!("======================== VAR WIDTH AGGREGATION ========================");
-            println!("Immediate Dominators: {immediate_dominators:?}");
             let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
             sorted_blocks.sort_by_key(|b| b.id);
             for block in sorted_blocks {
@@ -140,6 +138,14 @@ impl VariableWidthAggregation {
 
         let mut tracker = AluPatternTracker::default();
         let mut track_mode = false;
+
+        let mut stack_mode = None;
+        let pop = Ir51::BinOp {
+            op: BinOp::Sub,
+            dest: Operand::Register(Register::SP),
+            lhs: Operand::Register(Register::SP),
+            rhs: Operand::Constant(1),
+        };
 
         for (i, ir) in block.irs.iter_mut().enumerate().rev() {
             if track_mode {
@@ -160,17 +166,130 @@ impl VariableWidthAggregation {
                         defs.insert(rhs);
                     }
 
+                    _ if *ir == pop => {
+                        stack_mode = Some(i);
+                        break;
+                    }
+
                     _ => {}
                 }
             }
         }
 
-        if tracker.is_fully_resolved() && defs.is_empty() {
+        if let Some(idx) = stack_mode {
+            return Self::trace_stack(&mut block.irs, idx);
+        } else if tracker.is_fully_resolved() && defs.is_empty() {
             Self::rewrite_with_fused_op(block, &tracker);
             return true;
         }
 
         false
+    }
+
+    fn trace_stack(ir: &mut Vec<Ir51>, from: usize) -> bool {
+        let mut popped_vars = Vec::new();
+        let mut curr = from;
+
+        // Trace backward to find the sequence of POP instructions
+        while curr > 0 {
+            if let Some((var, next_i)) = Self::parse_pop_step(ir, curr) {
+                popped_vars.push(var);
+                if next_i == 0 {
+                    curr = 0;
+                    break;
+                }
+                curr = next_i - 1;
+            } else {
+                break;
+            }
+        }
+
+        let num_vars = popped_vars.len();
+        if num_vars == 0 {
+            return false;
+        }
+
+        // Search for a matching PUSH sequence earlier in the block
+        let mut pushed_vars = Vec::new();
+        let mut push_start = None;
+        let mut j = 0;
+
+        while j < curr {
+            if let Some((var, next_j)) = Self::parse_push_step(ir, j) {
+                if push_start.is_none() {
+                    push_start = Some(j);
+                }
+                pushed_vars.push(var);
+                j = next_j;
+                if pushed_vars.len() == num_vars {
+                    break;
+                }
+            } else {
+                if !pushed_vars.is_empty() {
+                    pushed_vars.clear();
+                    push_start = None;
+                }
+                j += 1;
+            }
+        }
+
+        if pushed_vars.len() == num_vars
+            && pushed_vars == popped_vars
+            && let Some(start) = push_start
+            && let [high_part, low_part] = pushed_vars.as_slice()
+            && let Some(low_var) = low_part.to_var_id()
+            && let Some(high_var) = high_part.to_var_id()
+        {
+            let src = Operand::Concat(low_var, high_var);
+            ir.splice(curr + 1..=from, Ir51::generate_pop(src, 2));
+            ir.splice(start..j, Ir51::generate_push(src, 2));
+            return true;
+        }
+
+        false
+    }
+
+    // Parse POP instruction
+    fn parse_pop_step(irs: &[Ir51], from_where: usize) -> Option<(Operand, usize)> {
+        if from_where < 1 {
+            return None;
+        }
+
+        let dec = &irs[from_where];
+        let load = &irs[from_where - 1];
+
+        if dec.is_sp_decrement()
+            && let Some(dest) = load.as_stack_load()
+        {
+            Some((*dest, from_where - 1))
+        } else {
+            None
+        }
+    }
+
+    // Parse PUSH instruction
+    fn parse_push_step(irs: &[Ir51], from_where: usize) -> Option<(Operand, usize)> {
+        if from_where + 2 >= irs.len() {
+            return None;
+        }
+
+        let inc = &irs[from_where];
+        let load = &irs[from_where + 1];
+        let store = &irs[from_where + 2];
+
+        if inc.is_sp_increment()
+            && let Ir51::Load {
+                dest: temp_load,
+                src_ptr,
+                space: AddrSpace::iData,
+            } = load
+            && let Some(temp_store) = store.as_stack_store()
+            && temp_load == temp_store
+        {
+            Some((*src_ptr, from_where + 3))
+        } else {
+            None
+        }
     }
 
     fn rewrite_with_fused_op(block: &mut BasicBlock, tracker: &AluPatternTracker) {
@@ -270,22 +389,7 @@ impl VariableWidthAggregation {
         };
         let (low_part, indices) = Self::analyze_head(head, cfg, op)?;
 
-        Self::fuse_triangle(
-            cfg, low_part, high_part, binop, &indices, head, branch, tail,
-        )
-    }
-
-    fn fuse_triangle(
-        cfg: &mut ControlFlowGraph,
-        low_part: Operand,
-        high_part: Operand,
-        binop: Ir51,
-        indices: &[usize],
-        headid: BlockId,
-        branchid: BlockId,
-        tailid: BlockId,
-    ) -> Option<()> {
-        let head_block = cfg.blocks.get_mut(&headid).unwrap();
+        let head_block = cfg.blocks.get_mut(&head).unwrap();
 
         let mut index = 0;
         head_block.irs.retain(|_| {
@@ -308,13 +412,13 @@ impl VariableWidthAggregation {
             lhs: var,
             rhs,
         });
-        head_block.irs.push(Ir51::Jump(tailid));
-        head_block.successors.retain(|s| *s != branchid);
+        head_block.irs.push(Ir51::Jump(tail));
+        head_block.successors.retain(|s| *s != branch);
 
-        let tail_block = cfg.blocks.get_mut(&tailid).unwrap();
-        tail_block.predecessors.retain(|p| *p != branchid);
+        let tail_block = cfg.blocks.get_mut(&tail).unwrap();
+        tail_block.predecessors.retain(|p| *p != branch);
 
-        cfg.blocks.remove(&branchid);
+        cfg.blocks.remove(&branch);
         Some(())
     }
 
@@ -322,13 +426,10 @@ impl VariableWidthAggregation {
         cfg: &ControlFlowGraph,
         idoms: &Dominators,
     ) -> Option<(BlockId, BlockId, BlockId)> {
-        // Topologically search where a triangle could be
         for block in cfg.blocks.values() {
             let [suc1, suc2] = block.successors.as_slice() else {
                 continue;
             };
-
-            let head = Some(block.id);
 
             let Some(branch_blockid) = [suc1, suc2]
                 .into_iter()
@@ -337,23 +438,13 @@ impl VariableWidthAggregation {
                 continue;
             };
 
-            let branch = Some(*branch_blockid);
-
             let branch_block = &cfg.blocks[branch_blockid];
             let [branch_suc] = branch_block.successors.as_slice() else {
                 continue;
             };
 
-            let mut tail = None;
             if branch_suc != branch_blockid && (branch_suc == suc1 || branch_suc == suc2) {
-                tail = Some(*branch_suc);
-            }
-
-            if let Some(head) = head
-                && let Some(branch) = branch
-                && let Some(tail) = tail
-            {
-                return Some((head, branch, tail));
+                return Some((block.id, *branch_blockid, *branch_suc));
             }
         }
 

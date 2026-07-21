@@ -4,7 +4,7 @@ use crate::{
     common::{
         Ir51,
         Operand::{self, Temporary},
-        Phi, SSAVar, VarId,
+        Phi, Register, SSAVar, VarId,
     },
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
@@ -174,7 +174,15 @@ impl DeSSAMapping {
             Operand::SSAVar { addr, version } => {
                 let ssaop = (*addr, *version);
                 let id = *self.ssa_mappings.get(&ssaop)?;
-                *op = Operand::Var(id);
+
+                // TODO: here we are hardcoding the mapping back to the SP register
+                // maybe use a specific phase for what we need to map back
+                if *addr == 0x81 {
+                    *op = Operand::Register(Register::SP)
+                } else {
+                    *op = Operand::Var(id);
+                }
+
                 Some(())
             }
 

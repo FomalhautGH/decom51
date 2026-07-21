@@ -94,6 +94,14 @@ impl Operand {
             None
         }
     }
+
+    pub fn to_var_id(self) -> Option<VarId> {
+        if let Operand::Var(id) = self {
+            Some(id)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -190,6 +198,93 @@ impl Ir51 {
             | Ir51::BranchIf { .. }
             | Ir51::Call(_)
             | Ir51::Nop => false,
+        }
+    }
+
+    pub fn generate_push(src: Operand, size: u16) -> Vec<Self> {
+        vec![
+            Self::BinOp {
+                op: BinOp::Add,
+                dest: Operand::Register(Register::SP),
+                lhs: Operand::Register(Register::SP),
+                rhs: Operand::Constant(size),
+            },
+            Self::Load {
+                space: AddrSpace::iData,
+                dest: Operand::Temporary(0),
+                src_ptr: src,
+            },
+            Self::Store {
+                space: AddrSpace::iData,
+                dest_ptr: Operand::Register(Register::SP),
+                value: Operand::Temporary(0),
+            },
+        ]
+    }
+
+    pub fn generate_pop(dest: Operand, size: u16) -> Vec<Self> {
+        vec![
+            Self::Load {
+                space: AddrSpace::iData,
+                dest,
+                src_ptr: Operand::Register(Register::SP),
+            },
+            Self::BinOp {
+                op: BinOp::Sub,
+                dest: Operand::Register(Register::SP),
+                lhs: Operand::Register(Register::SP),
+                rhs: Operand::Constant(size),
+            },
+        ]
+    }
+
+    pub fn is_sp_increment(&self) -> bool {
+        matches!(
+            self,
+            Self::BinOp {
+                op: BinOp::Add,
+                dest: Operand::Register(Register::SP),
+                lhs: Operand::Register(Register::SP),
+                rhs: Operand::Constant(1),
+            }
+        )
+    }
+
+    pub fn is_sp_decrement(&self) -> bool {
+        matches!(
+            self,
+            Self::BinOp {
+                op: BinOp::Sub,
+                dest: Operand::Register(Register::SP),
+                lhs: Operand::Register(Register::SP),
+                rhs: Operand::Constant(1),
+            }
+        )
+    }
+
+    pub fn as_stack_load(&self) -> Option<&Operand> {
+        if let Self::Load {
+            dest,
+            src_ptr: Operand::Register(Register::SP),
+            space: AddrSpace::iData,
+        } = self
+        {
+            Some(dest)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_stack_store(&self) -> Option<&Operand> {
+        if let Self::Store {
+            dest_ptr: Operand::Register(Register::SP),
+            value,
+            space: AddrSpace::iData,
+        } = self
+        {
+            Some(value)
+        } else {
+            None
         }
     }
 }
