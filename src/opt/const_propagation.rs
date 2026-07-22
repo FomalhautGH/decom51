@@ -4,7 +4,8 @@ use std::{
 };
 
 use crate::{
-    common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, SSAVar, TempSSAVar, format_addr},
+    common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, SSAVar, TempSSAVar},
+    lir::format_addr,
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 
@@ -532,10 +533,10 @@ impl ConstPropagation {
             // We work on constant later
             Operand::Constant(_) => None,
 
-            Operand::Address(_, _)
-            | Operand::Temporary(_)
+            Operand::Var(_, _)
+            | Operand::Temp(_)
             | Operand::Register(_)
-            | Operand::Var(_)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => {
                 unreachable!("{operand:?}")
             }

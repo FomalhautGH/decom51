@@ -241,12 +241,12 @@ impl Lifter {
         vec![
             Ir51::BinOp {
                 op: BinOp::Eq,
-                dest: Operand::Temporary(0),
+                dest: Operand::Temp(0),
                 lhs: Operand::Register(Register::C),
                 rhs: Operand::Constant(0),
             },
             Ir51::BranchIf {
-                cond: Operand::Temporary(0),
+                cond: Operand::Temp(0),
                 true_jmp,
                 false_jmp,
             },
@@ -254,11 +254,11 @@ impl Lifter {
     }
 
     fn push(&mut self, value: u8) -> Vec<Ir51> {
-        Ir51::generate_push(Operand::Address(value.into(), AddrSpace::iData), 1)
+        Ir51::generate_push(Operand::Var(value.into(), AddrSpace::iData), 1)
     }
 
     fn pop(&mut self, value: u8) -> Vec<Ir51> {
-        Ir51::generate_pop(Operand::Address(value.into(), AddrSpace::iData), 1)
+        Ir51::generate_pop(Operand::Var(value.into(), AddrSpace::iData), 1)
     }
 
     fn jump(&mut self, label: usize) -> Vec<Ir51> {
@@ -293,33 +293,33 @@ impl Lifter {
         vec![
             Ir51::BinOp {
                 op: BinOp::Lt,
-                dest: Operand::Temporary(1),
+                dest: Operand::Temp(1),
                 lhs: dest,
                 rhs: src,
             },
             Ir51::BinOp {
                 op: BinOp::Sub,
-                dest: Operand::Temporary(0),
+                dest: Operand::Temp(0),
                 lhs: dest,
                 rhs: src,
             },
             Ir51::BinOp {
                 op: BinOp::Lt,
-                dest: Operand::Temporary(2),
-                lhs: Operand::Temporary(0),
+                dest: Operand::Temp(2),
+                lhs: Operand::Temp(0),
                 rhs: Operand::Register(Register::C),
             },
             Ir51::BinOp {
                 op: BinOp::Sub,
                 dest,
-                lhs: Operand::Temporary(0),
+                lhs: Operand::Temp(0),
                 rhs: Operand::Register(Register::C),
             },
             Ir51::BinOp {
                 op: BinOp::Or,
                 dest: Operand::Register(Register::C),
-                lhs: Operand::Temporary(1),
-                rhs: Operand::Temporary(2),
+                lhs: Operand::Temp(1),
+                rhs: Operand::Temp(2),
             },
         ]
     }
@@ -341,7 +341,7 @@ impl Lifter {
         vec![
             Ir51::BinOp {
                 op: BinOp::Ne,
-                dest: Operand::Temporary(0),
+                dest: Operand::Temp(0),
                 lhs,
                 rhs,
             },
@@ -352,7 +352,7 @@ impl Lifter {
                 rhs,
             },
             Ir51::BranchIf {
-                cond: Operand::Temporary(0),
+                cond: Operand::Temp(0),
                 true_jmp,
                 false_jmp,
             },
@@ -361,7 +361,7 @@ impl Lifter {
 
     fn mov(&mut self, dest: Argument, src: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
-            Argument::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
             Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{dest:?}"),
         };
@@ -369,7 +369,7 @@ impl Lifter {
         let src: Operand = match src {
             Argument::Data8(imm8) => Operand::Constant(imm8.into()),
             Argument::Data16(imm16) => Operand::Constant(imm16),
-            Argument::IramAddress(addr) => Operand::Address(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
             Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{src:?}"),
         };

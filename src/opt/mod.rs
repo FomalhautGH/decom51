@@ -13,6 +13,7 @@ mod dbe;
 mod dce;
 mod dessa;
 mod ebe;
+mod expr_aggregation;
 mod rewriter;
 mod ssa;
 mod vwa;
@@ -47,5 +48,7 @@ impl Optimizer {
 
         let mut vwa = VariableWidthAggregation;
         vwa.execute(&mut cfg);
+
+        // let mut expragr =
     }
 }

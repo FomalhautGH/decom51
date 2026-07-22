@@ -106,9 +106,9 @@ impl<'a> Rewriter<'a> {
 
             Operand::Constant(_) => {}
             Operand::Register(_)
-            | Operand::Temporary(_)
-            | Operand::Address(_, _)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Var(_, _)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => unreachable!(),
         }
     }
@@ -136,9 +136,9 @@ impl<'a> Rewriter<'a> {
 
             Operand::Constant(v) => Some(*v),
             Operand::Register(_)
-            | Operand::Temporary(_)
-            | Operand::Address(_, _)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Var(_, _)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => unreachable!(),
         }
     }

@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum TrackedValue {
+pub enum TrackedValue {
     Classic(VarId),
     Fused(VarId, VarId),
     Temporary(TempIndex),
@@ -21,22 +21,22 @@ const BITS: usize = 8;
 impl TrackedValue {
     pub fn from_operand(op: &Operand) -> Self {
         match op {
-            Operand::Var(id) => Self::Classic(*id),
-            Operand::Temporary(id) => Self::Temporary(*id),
+            Operand::Local(id) => Self::Classic(*id),
+            Operand::Temp(id) => Self::Temporary(*id),
             Operand::Constant(value) => Self::Constant(*value),
             Operand::Concat(v1, v2) => Self::Fused(*v1, *v2),
 
             Operand::Register(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Address(_, _) => unreachable!(),
+            | Operand::Var(_, _) => unreachable!(),
         }
     }
 
     pub fn into_operand(self) -> Operand {
         match self {
-            Self::Classic(id) => Operand::Var(id),
-            Self::Temporary(idx) => Operand::Temporary(idx),
+            Self::Classic(id) => Operand::Local(id),
+            Self::Temporary(idx) => Operand::Temp(idx),
             Self::Constant(val) => Operand::Constant(val),
             Self::Fused(v1, v2) => Operand::Concat(v1, v2),
         }
@@ -237,8 +237,8 @@ impl VariableWidthAggregation {
             && pushed_vars == popped_vars
             && let Some(start) = push_start
             && let [high_part, low_part] = pushed_vars.as_slice()
-            && let Some(low_var) = low_part.to_var_id()
-            && let Some(high_var) = high_part.to_var_id()
+            && let Some(low_var) = low_part.to_local_id()
+            && let Some(high_var) = high_part.to_local_id()
         {
             let src = Operand::Concat(low_var, high_var);
             ir.splice(curr + 1..=from, Ir51::generate_pop(src, 2));

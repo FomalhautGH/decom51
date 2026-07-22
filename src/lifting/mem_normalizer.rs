@@ -67,43 +67,43 @@ impl MemNormalizer {
     #[allow(clippy::identity_op)]
     fn resolve_register(reg: &Register, current_bank: u16) -> Operand {
         match reg {
-            Register::R0 => Operand::Address(0 + (current_bank << 3), AddrSpace::iData),
-            Register::R1 => Operand::Address(1 + (current_bank << 3), AddrSpace::iData),
-            Register::R2 => Operand::Address(2 + (current_bank << 3), AddrSpace::iData),
-            Register::R3 => Operand::Address(3 + (current_bank << 3), AddrSpace::iData),
-            Register::R4 => Operand::Address(4 + (current_bank << 3), AddrSpace::iData),
-            Register::R5 => Operand::Address(5 + (current_bank << 3), AddrSpace::iData),
-            Register::R6 => Operand::Address(6 + (current_bank << 3), AddrSpace::iData),
-            Register::R7 => Operand::Address(7 + (current_bank << 3), AddrSpace::iData),
+            Register::R0 => Operand::Var(0 + (current_bank << 3), AddrSpace::iData),
+            Register::R1 => Operand::Var(1 + (current_bank << 3), AddrSpace::iData),
+            Register::R2 => Operand::Var(2 + (current_bank << 3), AddrSpace::iData),
+            Register::R3 => Operand::Var(3 + (current_bank << 3), AddrSpace::iData),
+            Register::R4 => Operand::Var(4 + (current_bank << 3), AddrSpace::iData),
+            Register::R5 => Operand::Var(5 + (current_bank << 3), AddrSpace::iData),
+            Register::R6 => Operand::Var(6 + (current_bank << 3), AddrSpace::iData),
+            Register::R7 => Operand::Var(7 + (current_bank << 3), AddrSpace::iData),
 
-            Register::A => Operand::Address(0xE0, AddrSpace::iData),
-            Register::B => Operand::Address(0xF0, AddrSpace::iData),
-            Register::SP => Operand::Address(0x81, AddrSpace::iData),
-            Register::DPL => Operand::Address(0x82, AddrSpace::iData),
-            Register::DPH => Operand::Address(0x83, AddrSpace::iData),
+            Register::A => Operand::Var(0xE0, AddrSpace::iData),
+            Register::B => Operand::Var(0xF0, AddrSpace::iData),
+            Register::SP => Operand::Var(0x81, AddrSpace::iData),
+            Register::DPL => Operand::Var(0x82, AddrSpace::iData),
+            Register::DPH => Operand::Var(0x83, AddrSpace::iData),
 
-            Register::DPTR => Operand::Address(0x82, AddrSpace::iData),
+            Register::DPTR => Operand::Var(0x82, AddrSpace::iData),
 
-            Register::P0 => Operand::Address(0x80, AddrSpace::iData),
-            Register::P1 => Operand::Address(0x90, AddrSpace::iData),
-            Register::P2 => Operand::Address(0xA0, AddrSpace::iData),
-            Register::P3 => Operand::Address(0xB0, AddrSpace::iData),
+            Register::P0 => Operand::Var(0x80, AddrSpace::iData),
+            Register::P1 => Operand::Var(0x90, AddrSpace::iData),
+            Register::P2 => Operand::Var(0xA0, AddrSpace::iData),
+            Register::P3 => Operand::Var(0xB0, AddrSpace::iData),
 
-            Register::PCON => Operand::Address(0x87, AddrSpace::iData),
-            Register::TCON => Operand::Address(0x88, AddrSpace::iData),
-            Register::TMOD => Operand::Address(0x89, AddrSpace::iData),
-            Register::TL0 => Operand::Address(0x8A, AddrSpace::iData),
-            Register::TL1 => Operand::Address(0x8B, AddrSpace::iData),
-            Register::TH0 => Operand::Address(0x8C, AddrSpace::iData),
-            Register::TH1 => Operand::Address(0x8D, AddrSpace::iData),
+            Register::PCON => Operand::Var(0x87, AddrSpace::iData),
+            Register::TCON => Operand::Var(0x88, AddrSpace::iData),
+            Register::TMOD => Operand::Var(0x89, AddrSpace::iData),
+            Register::TL0 => Operand::Var(0x8A, AddrSpace::iData),
+            Register::TL1 => Operand::Var(0x8B, AddrSpace::iData),
+            Register::TH0 => Operand::Var(0x8C, AddrSpace::iData),
+            Register::TH1 => Operand::Var(0x8D, AddrSpace::iData),
 
-            Register::SCON => Operand::Address(0x98, AddrSpace::iData),
-            Register::SBUF => Operand::Address(0x99, AddrSpace::iData),
+            Register::SCON => Operand::Var(0x98, AddrSpace::iData),
+            Register::SBUF => Operand::Var(0x99, AddrSpace::iData),
 
-            Register::IE => Operand::Address(0xA8, AddrSpace::iData),
-            Register::IP => Operand::Address(0xB8, AddrSpace::iData),
+            Register::IE => Operand::Var(0xA8, AddrSpace::iData),
+            Register::IP => Operand::Var(0xB8, AddrSpace::iData),
 
-            Register::C => Operand::Address(0xD0, AddrSpace::iData),
+            Register::C => Operand::Var(0xD0, AddrSpace::iData),
 
             Register::PSW => todo!(
                 "Since PSW contains flags every single bit (like the Carry) we do not support its presence yet"

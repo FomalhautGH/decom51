@@ -35,6 +35,8 @@ pub struct ControlFlowGraph {
     pub start_block: BlockId,
 }
 
+// TODO !important: all the phases that we do on the controlflow graph should be
+// their respective method
 impl ControlFlowGraph {
     pub fn remove_useless_irs(&mut self) {
         // TODO: Use a better 'null' operand for the phis

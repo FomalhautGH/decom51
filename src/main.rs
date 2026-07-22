@@ -7,6 +7,8 @@ use crate::{lifting::Lifting, opt::Optimizer, syntax::SyntaxAnalyzer};
 mod codegen;
 mod common;
 mod lifting;
+mod lir;
+mod mir;
 mod opt;
 mod syntax;
 

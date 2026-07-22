@@ -85,7 +85,7 @@ impl PhiElimination {
             let mut do_temp = false;
 
             while let Some((dest, src)) = phis.pop() {
-                let temp = Operand::Temporary(temp_counter);
+                let temp = Operand::Temp(temp_counter);
 
                 for (_, s) in &mut *phis {
                     if dest == *s {

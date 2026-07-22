@@ -1,5 +1,6 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi, SSAVar, format_addr},
+    common::{BlockId, Ir51, Operand, Phi, SSAVar},
+    lir::format_addr,
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 use std::collections::{HashMap, HashSet};
@@ -132,6 +133,9 @@ impl Liveness {
         self.save_def(&phi.operand, blockid);
     }
 
+    // TODO: maybe add a method on BasicBlock that counts the definitions and usages
+    // of a variable in a hashmap and returns it, i need that here, in expr aggregaton
+    // and probably other places i don't remember right now
     fn use_def_on_ir(&mut self, ir: &Ir51, blockid: BlockId) {
         match ir {
             Ir51::Move { dest, src } => {
@@ -173,10 +177,10 @@ impl Liveness {
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Address(_, _)
+            Operand::Var(_, _)
             | Operand::Register(_)
-            | Operand::Temporary(_)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => unreachable!(),
         }
     }
@@ -194,10 +198,10 @@ impl Liveness {
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Address(_, _)
+            Operand::Var(_, _)
             | Operand::Register(_)
-            | Operand::Temporary(_)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => unreachable!(),
         }
     }

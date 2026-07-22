@@ -1,5 +1,6 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi, SSAVar, TempSSAVar, format_addr},
+    common::{BlockId, Ir51, Operand, Phi, SSAVar, TempSSAVar},
+    lir::format_addr,
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 use std::collections::HashMap;
@@ -141,9 +142,9 @@ impl DeadCodeElimination {
 
             Operand::Constant(_) => {}
             Operand::Register(_)
-            | Operand::Temporary(_)
-            | Operand::Address(_, _)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Var(_, _)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => unreachable!(),
         }
     }
@@ -223,11 +224,11 @@ impl DeadCodeElimination {
                 }
             }
 
-            Operand::Address(_, _)
+            Operand::Var(_, _)
             | Operand::Constant(_)
-            | Operand::Temporary(_)
+            | Operand::Temp(_)
             | Operand::Register(_)
-            | Operand::Var(_)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => {
                 unreachable!("{dest:?}")
             }
@@ -313,10 +314,10 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Address(_, _)
+            Operand::Var(_, _)
             | Operand::Register(_)
-            | Operand::Temporary(_)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => unreachable!(),
         }
     }
@@ -339,9 +340,9 @@ impl DeadCodeElimination {
 
             Operand::Constant(_) => {}
             Operand::Register(_)
-            | Operand::Temporary(_)
-            | Operand::Address(_, _)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Var(_, _)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => unreachable!(),
         }
     }

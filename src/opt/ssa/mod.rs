@@ -1,5 +1,6 @@
 use crate::{
-    common::{Addr, AddrSpace, BlockId, Ir51, Operand, Phi, TempIndex, format_addr},
+    common::{Addr, AddrSpace, BlockId, Ir51, Operand, Phi, TempIndex},
+    lir::format_addr,
     opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
 };
 use std::{
@@ -172,7 +173,7 @@ impl SSABuilder {
                 .phis;
 
             for phi in phis.iter_mut() {
-                let (Operand::Address(addr, _) | Operand::SSAVar { addr, .. }) = phi.operand else {
+                let (Operand::Var(addr, _) | Operand::SSAVar { addr, .. }) = phi.operand else {
                     unreachable!()
                 };
 
@@ -292,7 +293,7 @@ impl SSABuilder {
     // version to read
     fn read_op(op: &Operand, stack: &VersionStack) -> Operand {
         match op {
-            Operand::Address(addr, AddrSpace::iData) => {
+            Operand::Var(addr, AddrSpace::iData) => {
                 let key = VarKey::Mem(*addr);
                 let version = Self::get_stack_top_for(stack, key);
 
@@ -302,7 +303,7 @@ impl SSABuilder {
                 }
             }
 
-            Operand::Temporary(index) => {
+            Operand::Temp(index) => {
                 let key = VarKey::Temp(*index);
                 let version = Self::get_stack_top_for(stack, key);
 
@@ -312,13 +313,13 @@ impl SSABuilder {
                 }
             }
 
-            Operand::Address(_, _) => todo!(),
+            Operand::Var(_, _) => todo!(),
 
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Var(_)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => *op,
         }
     }
@@ -344,7 +345,7 @@ impl SSABuilder {
         };
 
         match op {
-            Operand::Address(addr, AddrSpace::iData) => {
+            Operand::Var(addr, AddrSpace::iData) => {
                 let key = VarKey::Mem(*addr);
                 let version = update(key);
 
@@ -353,7 +354,7 @@ impl SSABuilder {
                     version,
                 }
             }
-            Operand::Temporary(index) => {
+            Operand::Temp(index) => {
                 let key = VarKey::Temp(*index);
                 let version = update(key);
 
@@ -363,13 +364,13 @@ impl SSABuilder {
                 }
             }
 
-            Operand::Address(_, _) => todo!(),
+            Operand::Var(_, _) => todo!(),
 
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Var(_)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => *op,
         }
     }
@@ -411,13 +412,13 @@ impl SSABuilder {
 
                     // TODO: Dont hardcode iData cuz variables could be from different RAMs
                     if frontier_block.phis.iter().any(|e| {
-                        matches!(e, Phi { operand: Operand::Address(v, AddrSpace::iData), .. } if *v == *var)
+                        matches!(e, Phi { operand: Operand::Var(v, AddrSpace::iData), .. } if *v == *var)
                     }) {
                         continue;
                     }
 
                     frontier_block.phis.push(Phi {
-                        operand: Operand::Address(*var, AddrSpace::iData),
+                        operand: Operand::Var(*var, AddrSpace::iData),
                         incoming: HashMap::new(),
                     });
 
@@ -441,29 +442,29 @@ impl SSABuilder {
                 match *ir {
                     // Addresses
                     Ir51::Move {
-                        dest: Operand::Address(addr, _),
+                        dest: Operand::Var(addr, _),
                         ..
                     }
                     | Ir51::BinOp {
-                        dest: Operand::Address(addr, _),
+                        dest: Operand::Var(addr, _),
                         ..
                     }
                     | Ir51::Load {
-                        dest: Operand::Address(addr, _),
+                        dest: Operand::Var(addr, _),
                         ..
                     }
                     | Ir51::BranchIf {
-                        cond: Operand::Address(addr, _),
+                        cond: Operand::Var(addr, _),
                         ..
                     } => insert_var(VarKey::Mem(addr)),
 
                     // Temporaries
                     Ir51::BranchIf {
-                        cond: Operand::Temporary(index),
+                        cond: Operand::Temp(index),
                         ..
                     }
                     | Ir51::BinOp {
-                        dest: Operand::Temporary(index),
+                        dest: Operand::Temp(index),
                         ..
                     } => insert_var(VarKey::Temp(index)),
 

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     common::{
         Ir51,
-        Operand::{self, Temporary},
+        Operand::{self, Temp},
         Phi, Register, SSAVar, VarId,
     },
     opt::{
@@ -180,22 +180,22 @@ impl DeSSAMapping {
                 if *addr == 0x81 {
                     *op = Operand::Register(Register::SP)
                 } else {
-                    *op = Operand::Var(id);
+                    *op = Operand::Local(id);
                 }
 
                 Some(())
             }
 
             Operand::TempSSAVar { index, .. } => {
-                *op = Temporary(*index);
+                *op = Temp(*index);
                 Some(())
             }
 
             Operand::Register(_)
             | Operand::Constant(_)
-            | Operand::Temporary(_)
-            | Operand::Address(_, _)
-            | Operand::Var(_)
+            | Operand::Temp(_)
+            | Operand::Var(_, _)
+            | Operand::Local(_)
             | Operand::Concat(_, _) => None,
         }
     }

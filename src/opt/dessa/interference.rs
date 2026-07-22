@@ -1,5 +1,6 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi, SSAVar, format_addr, is_ssa_smaller},
+    common::{BlockId, Ir51, Operand, Phi, SSAVar, is_ssa_smaller},
+    lir::format_addr,
     opt::{
         cfg_restorer::{BasicBlock, ControlFlowGraph},
         dessa::liveness::LocalSet,
