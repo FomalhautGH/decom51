@@ -3,12 +3,16 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
-use crate::common::{BlockId, Ir51, Operand, Phi};
+use crate::{
+    common::{BlockId, Ir51, Operand, Phi},
+    mir::Mir51,
+};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BasicBlock {
     pub id: BlockId,
     pub irs: Vec<Ir51>,
+    pub mirs: Vec<Mir51>,
     pub successors: Vec<BlockId>,
     pub predecessors: Vec<BlockId>,
     pub phis: Vec<Phi>,
@@ -19,10 +23,7 @@ impl BasicBlock {
     pub fn new(id: BlockId) -> Self {
         Self {
             id,
-            irs: Vec::new(),
-            successors: Vec::new(),
-            predecessors: Vec::new(),
-            phis: Vec::new(),
+            ..Default::default()
         }
     }
 }
@@ -139,9 +140,7 @@ impl CFGRestorer {
             blocks.push(BasicBlock {
                 id: i,
                 irs: ir_code[start..end].to_vec(),
-                successors: Vec::new(),
-                predecessors: Vec::new(),
-                phis: Vec::new(),
+                ..Default::default()
             });
         }
 
@@ -151,9 +150,7 @@ impl CFGRestorer {
         let last_block = BasicBlock {
             id: leaders.len() - 1,
             irs: ir_code[*last_leader..].to_vec(),
-            successors: Vec::new(),
-            predecessors: Vec::new(),
-            phis: Vec::new(),
+            ..Default::default()
         };
 
         blocks.push(last_block);
@@ -231,9 +228,16 @@ impl Display for BasicBlock {
         }
 
         if !self.irs.is_empty() {
-            writeln!(f, "  Instructions:")?;
+            writeln!(f, "  Low IR Instructions:")?;
             for (i, ir) in self.irs.iter().enumerate() {
                 writeln!(f, "    {}: {}", i, ir)?;
+            }
+        }
+
+        if !self.mirs.is_empty() {
+            writeln!(f, "  Middle IR Instructions:")?;
+            for (i, mir) in self.mirs.iter().enumerate() {
+                writeln!(f, "    {}: {}", i, mir)?;
             }
         }
 

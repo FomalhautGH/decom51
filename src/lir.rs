@@ -345,7 +345,7 @@ impl Display for Ir51 {
             } => {
                 write!(f, "{} = *{:?}[{}]", dest, space, src_ptr)
             }
-            Ir51::Jump(label) => write!(f, "goto Block_{}", label),
+            Ir51::Jump(label) => write!(f, "jump Block_{}", label),
             Ir51::BranchIf {
                 cond,
                 true_jmp,
@@ -353,7 +353,7 @@ impl Display for Ir51 {
             } => {
                 write!(
                     f,
-                    "if ({}) goto Block_{} else goto Block_{}",
+                    "if ({}) jump Block_{} else jump Block_{}",
                     cond, true_jmp, false_jmp
                 )
             }

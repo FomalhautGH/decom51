@@ -19,17 +19,17 @@ pub enum TrackedValue {
 const BITS: usize = 8;
 
 impl TrackedValue {
-    pub fn from_operand(op: &Operand) -> Self {
+    pub fn from_operand(op: &Operand) -> Option<Self> {
         match op {
-            Operand::Local(id) => Self::Classic(*id),
-            Operand::Temp(id) => Self::Temporary(*id),
-            Operand::Constant(value) => Self::Constant(*value),
-            Operand::Concat(v1, v2) => Self::Fused(*v1, *v2),
+            Operand::Local(id) => Some(Self::Classic(*id)),
+            Operand::Temp(id) => Some(Self::Temporary(*id)),
+            Operand::Constant(value) => Some(Self::Constant(*value)),
+            Operand::Concat(v1, v2) => Some(Self::Fused(*v1, *v2)),
 
             Operand::Register(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Var(_, _) => unreachable!(),
+            | Operand::Var(_, _) => None,
         }
     }
 
@@ -153,17 +153,18 @@ impl VariableWidthAggregation {
             } else {
                 match ir {
                     Ir51::BinOp { op, dest, lhs, rhs } if op.is_glue_op() => {
-                        let dest = TrackedValue::from_operand(dest);
-                        let lhs = TrackedValue::from_operand(lhs);
-                        let rhs = TrackedValue::from_operand(rhs);
+                        if let Some(dest) = TrackedValue::from_operand(dest)
+                            && let Some(lhs) = TrackedValue::from_operand(lhs)
+                            && let Some(rhs) = TrackedValue::from_operand(rhs)
+                        {
+                            track_mode = true;
 
-                        track_mode = true;
+                            tracker.dest = Some(dest);
+                            tracker.end_index = i;
 
-                        tracker.dest = Some(dest);
-                        tracker.end_index = i;
-
-                        defs.insert(lhs);
-                        defs.insert(rhs);
+                            defs.insert(lhs);
+                            defs.insert(rhs);
+                        }
                     }
 
                     _ if *ir == pop => {
@@ -325,42 +326,46 @@ impl VariableWidthAggregation {
     ) {
         match ir {
             Ir51::Move { dest, src } => {
-                let dest = TrackedValue::from_operand(dest);
-                let src = TrackedValue::from_operand(src);
-
-                tracker.propagate_alias(dest, src);
-                tracker.start_index = i;
+                if let Some(dest) = TrackedValue::from_operand(dest)
+                    && let Some(src) = TrackedValue::from_operand(src)
+                {
+                    tracker.propagate_alias(dest, src);
+                    tracker.start_index = i;
+                }
             }
 
             Ir51::BinOp { op, dest, lhs, rhs } if op.is_glue_op() => {
-                let dest = TrackedValue::from_operand(dest);
-                let lhs = TrackedValue::from_operand(lhs);
-                let rhs = TrackedValue::from_operand(rhs);
-                if !defs.remove(&dest) {
-                    return;
-                }
+                if let Some(dest) = TrackedValue::from_operand(dest)
+                    && let Some(lhs) = TrackedValue::from_operand(lhs)
+                    && let Some(rhs) = TrackedValue::from_operand(rhs)
+                {
+                    if !defs.remove(&dest) {
+                        return;
+                    }
 
-                tracker.binop = Some(*op);
-                tracker.start_index = i;
-                if !tracker.contains(lhs) {
-                    defs.insert(lhs);
-                };
-                if !tracker.contains(rhs) {
-                    defs.insert(rhs);
-                };
+                    tracker.binop = Some(*op);
+                    tracker.start_index = i;
+                    if !tracker.contains(lhs) {
+                        defs.insert(lhs);
+                    };
+                    if !tracker.contains(rhs) {
+                        defs.insert(rhs);
+                    };
+                }
             }
 
             Ir51::BinOp { op, dest, lhs, rhs } if op.is_math_op() => {
-                let dest = TrackedValue::from_operand(dest);
-                let lhs = TrackedValue::from_operand(lhs);
-                let rhs = TrackedValue::from_operand(rhs);
+                if let Some(dest) = TrackedValue::from_operand(dest)
+                    && let Some(lhs) = TrackedValue::from_operand(lhs)
+                    && let Some(rhs) = TrackedValue::from_operand(rhs)
+                {
+                    if !defs.remove(&dest) {
+                        return;
+                    }
 
-                if !defs.remove(&dest) {
-                    return;
+                    tracker.start_index = i;
+                    tracker.record_byte_pair(lhs, rhs);
                 }
-
-                tracker.start_index = i;
-                tracker.record_byte_pair(lhs, rhs);
             }
 
             _ => {}
@@ -398,8 +403,8 @@ impl VariableWidthAggregation {
             keep
         });
 
-        let low = TrackedValue::from_operand(&low_part);
-        let high = TrackedValue::from_operand(&high_part);
+        let low = TrackedValue::from_operand(&low_part)?;
+        let high = TrackedValue::from_operand(&high_part)?;
 
         let Ir51::BinOp { op, rhs, .. } = binop else {
             return None;

@@ -2,8 +2,9 @@ use crate::{
     common::Ir51,
     opt::{
         cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
-        dce::DeadCodeElimination, dessa::DeSSA, ebe::EmptyBlockElimination, rewriter::Rewriter,
-        ssa::SSABuilder, vwa::VariableWidthAggregation,
+        dce::DeadCodeElimination, dessa::DeSSA, ebe::EmptyBlockElimination,
+        expr_aggregation::ExprAggregation, rewriter::Rewriter, ssa::SSABuilder,
+        vwa::VariableWidthAggregation,
     },
 };
 
@@ -49,6 +50,7 @@ impl Optimizer {
         let mut vwa = VariableWidthAggregation;
         vwa.execute(&mut cfg);
 
-        // let mut expragr =
+        let mut expragr = ExprAggregation::default();
+        expragr.execute(&mut cfg);
     }
 }
