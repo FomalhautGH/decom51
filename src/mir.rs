@@ -1,4 +1,7 @@
-use std::fmt::{Display, Formatter, Result};
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter, Result},
+};
 
 use crate::lir::{Operand, Register};
 use std::prelude::v1;
@@ -22,6 +25,44 @@ pub enum Expr {
 
     Deref(Box<Expr>),
     Concat(Vec<Expr>),
+}
+
+impl Expr {
+    pub fn collect_dependencies(&self, vars: &mut HashSet<Operand>) {
+        match self {
+            Expr::Constant(_) => {}
+
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Eq(lhs, rhs)
+            | Expr::Lt(lhs, rhs)
+            | Expr::Gt(lhs, rhs)
+            | Expr::Le(lhs, rhs)
+            | Expr::Ge(lhs, rhs)
+            | Expr::Ne(lhs, rhs)
+            | Expr::Or(lhs, rhs) => {
+                lhs.collect_dependencies(vars);
+                rhs.collect_dependencies(vars);
+            }
+
+            Expr::Register(reg) => {
+                vars.insert(Operand::Register(*reg));
+            }
+            Expr::Var(id) => {
+                vars.insert(Operand::Local(*id));
+            }
+            Expr::Temp(idx) => {
+                vars.insert(Operand::Temp(*idx));
+            }
+
+            Expr::Deref(expr) => expr.collect_dependencies(vars),
+            Expr::Concat(exprs) => {
+                for expr in exprs {
+                    expr.collect_dependencies(vars);
+                }
+            }
+        }
+    }
 }
 
 impl TryFrom<Operand> for Expr {

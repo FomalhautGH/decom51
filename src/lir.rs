@@ -100,6 +100,19 @@ impl Operand {
             None
         }
     }
+
+    pub fn does_overlap(&self, rhs: &Operand) -> bool {
+        match (self, rhs) {
+            (Operand::Concat(v1, v2), Operand::Local(lid))
+            | (Operand::Local(lid), Operand::Concat(v1, v2)) => v1 == lid || v2 == lid,
+
+            (Operand::Concat(v1, v2), Operand::Concat(l1, l2)) => {
+                v1 == l1 || v1 == l2 || v2 == l1 || v2 == l2
+            }
+
+            (op1, op2) => op1 == op2,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]

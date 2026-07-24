@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::{BlockId, Ir51, Operand},
@@ -82,6 +82,7 @@ impl ExprAggregation {
     }
 
     fn call(&mut self, bid: BlockId) -> Option<()> {
+        self.definitions.clear();
         self.mir_instructions.push(Mir51::Call(bid));
         Some(())
     }
@@ -90,6 +91,7 @@ impl ExprAggregation {
         let value = self.resolve_operand(value)?;
         let dest_ptr = self.resolve_operand(dest_ptr)?;
 
+        self.definitions.clear();
         self.mir_instructions.push(Mir51::Store { dest_ptr, value });
         Some(())
     }
@@ -221,6 +223,11 @@ impl ExprAggregation {
             self.definitions.insert(tv, def);
         } else {
             self.mir_instructions.push(assignment);
+            self.definitions.retain(|_, def| {
+                let mut dep = HashSet::new();
+                def.collect_dependencies(&mut dep);
+                !dep.iter().any(|d| d.does_overlap(dest))
+            });
         }
     }
 }
