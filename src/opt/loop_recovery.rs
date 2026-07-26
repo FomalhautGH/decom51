@@ -7,9 +7,19 @@ use crate::{
 
 // Represents the back edges by their head and tail
 type BackEdges = Vec<(BlockId, BlockId)>;
-type MergedLoops = HashMap<BlockId, HashSet<BlockId>>;
 type LoopBodies = Vec<HashSet<BlockId>>;
+
+type MergedLoops = HashMap<BlockId, HashSet<BlockId>>;
 type DominatorSets = HashMap<BlockId, HashSet<BlockId>>;
+
+// Represents the loop tree, that is, the tree that makes evident
+// when a loop is inside another, whats is the body of that loop and the head
+#[derive(Debug, Clone)]
+struct LoopTree {
+    header: BlockId,
+    body: HashSet<BlockId>,
+    children: Vec<LoopTree>,
+}
 
 #[derive(Default)]
 pub struct LoopRecovery;
@@ -19,15 +29,64 @@ impl LoopRecovery {
         let dominators = self.compute_dominators(cfg);
         let back_edges = self.find_back_edges(cfg, &dominators);
         let loops = self.find_loops(cfg, &back_edges);
-        let loops = self.merge_loops(cfg, back_edges, loops);
+        let loops = Self::merge_loops(back_edges, loops);
+        let tree: Vec<LoopTree> = self.build_loop_tree(loops);
 
-        println!("{:?}", loops);
+        println!("{:?}", tree);
+    }
+
+    #[allow(clippy::needless_range_loop)]
+    fn build_loop_tree(&self, loops: MergedLoops) -> Vec<LoopTree> {
+        let mut loop_tree_map = Self::init_loop_tree_map(loops.clone());
+        let mut root_headers: HashSet<BlockId> = loop_tree_map.keys().copied().collect();
+
+        let mut loops_by_size: Vec<(BlockId, usize)> = loops
+            .iter()
+            .map(|(head, body)| (*head, body.len()))
+            .collect();
+        loops_by_size.sort_by_key(|(_, len)| *len);
+
+        for i in 0..loops_by_size.len() {
+            let sub_header = loops_by_size[i].0;
+            let sub_body = &loops[&sub_header];
+
+            for j in (i + 1)..loops_by_size.len() {
+                let super_header = loops_by_size[j].0;
+                let super_body = &loops[&super_header];
+
+                if sub_body.is_subset(super_body) {
+                    let sub_tree = loop_tree_map.remove(&sub_header).unwrap();
+                    let super_tree = loop_tree_map.get_mut(&super_header).unwrap();
+                    super_tree.children.push(sub_tree);
+
+                    root_headers.remove(&sub_header);
+                    break;
+                }
+            }
+        }
+
+        let mut loop_forest: Vec<LoopTree> = loop_tree_map.into_values().collect();
+        loop_forest.retain(|lt| root_headers.contains(&lt.header));
+        loop_forest
+    }
+
+    fn init_loop_tree_map(loops: MergedLoops) -> HashMap<BlockId, LoopTree> {
+        let mut loop_tree_map = HashMap::new();
+
+        for (header, body) in loops {
+            let loop_tree = LoopTree {
+                header,
+                body,
+                children: Vec::new(),
+            };
+            loop_tree_map.insert(header, loop_tree);
+        }
+
+        loop_tree_map
     }
 
     // Merges the loops with the same head into one
     fn merge_loops(
-        &self,
-        cfg: &ControlFlowGraph,
         back_edges: BackEdges,
         loops: LoopBodies,
     ) -> MergedLoops {
@@ -91,9 +150,9 @@ impl LoopRecovery {
         let mut back_edges = Vec::new();
 
         for block in cfg.blocks.values() {
-            let dominators = &dominators[&block.id];
+            let block_dominators = &dominators[&block.id];
             for &successor in &block.successors {
-                if dominators.contains(&successor) {
+                if block_dominators.contains(&successor) {
                     back_edges.push((successor, block.id));
                 }
             }
@@ -132,11 +191,8 @@ impl LoopRecovery {
         block: &BasicBlock,
         dominators: &mut DominatorSets,
     ) -> Option<()> {
-        let old_dominators = dominators[&block.id].clone();
         let mut pred_iter = block.predecessors.iter();
-
         let first_pred = pred_iter.next()?;
-
         let mut current_dominators = dominators[first_pred].clone();
 
         for pred in pred_iter {
@@ -145,7 +201,7 @@ impl LoopRecovery {
         }
 
         current_dominators.insert(block.id);
-        if old_dominators != current_dominators {
+        if dominators[&block.id] != current_dominators {
             dominators.insert(block.id, current_dominators);
             Some(())
         } else {
@@ -157,10 +213,10 @@ impl LoopRecovery {
         let block_ids: Vec<BlockId> = cfg.blocks.keys().copied().collect();
         self.add_dominator(cfg.start_block, cfg.start_block, dominators);
 
-        for node_id in &block_ids {
-            if *node_id != cfg.start_block {
+        for &node_id in &block_ids {
+            if node_id != cfg.start_block {
                 for &dom_candidate_id in &block_ids {
-                    self.add_dominator(*node_id, dom_candidate_id, dominators);
+                    self.add_dominator(node_id, dom_candidate_id, dominators);
                 }
             }
         }

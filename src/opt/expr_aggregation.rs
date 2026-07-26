@@ -105,6 +105,7 @@ impl ExprAggregation {
             dest: dest_var,
             src,
         };
+
         self.aggregate_or_emit(dest, src_ptr, assignment);
         Some(())
     }
