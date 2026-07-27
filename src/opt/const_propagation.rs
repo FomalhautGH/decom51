@@ -6,7 +6,7 @@ use std::{
 use crate::{
     common::{Addr, BinOp, BlockId, Constant, Ir51, Operand, Phi, SSAVar, TempSSAVar},
     lir::format_addr,
-    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
+    opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]

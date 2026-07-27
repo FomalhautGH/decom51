@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     common::{BlockId, Ir51, Operand, SSAVar, is_ssa_smaller},
     opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
+        cfg::{BasicBlock, ControlFlowGraph},
         dessa::interference::InterferenceGraph,
     },
 };

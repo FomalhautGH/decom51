@@ -1,7 +1,7 @@
 use crate::{
     common::{BlockId, Ir51, Operand, Phi, SSAVar},
     lir::format_addr,
-    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
+    opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 use std::collections::{HashMap, HashSet};
 

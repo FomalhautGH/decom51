@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::BlockId,
-    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
+    opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 
 // Represents the back edges by their head and tail
@@ -15,7 +15,7 @@ type DominatorSets = HashMap<BlockId, HashSet<BlockId>>;
 // Represents the loop tree, that is, the tree that makes evident
 // when a loop is inside another, whats is the body of that loop and the head
 #[derive(Debug, Clone)]
-struct LoopTree {
+pub struct LoopTree {
     header: BlockId,
     body: HashSet<BlockId>,
     children: Vec<LoopTree>,
@@ -25,14 +25,11 @@ struct LoopTree {
 pub struct LoopRecovery;
 
 impl LoopRecovery {
-    pub fn execute(&mut self, cfg: &ControlFlowGraph) {
+    pub fn execute(&mut self, cfg: &ControlFlowGraph) -> Vec<LoopTree> {
         let dominators = self.compute_dominators(cfg);
         let back_edges = self.find_back_edges(cfg, &dominators);
-        let loops = self.find_loops(cfg, &back_edges);
-        let loops = Self::merge_loops(back_edges, loops);
-        let tree: Vec<LoopTree> = self.build_loop_tree(loops);
-
-        println!("{:?}", tree);
+        let loops = self.find_loops(cfg, back_edges);
+        self.build_loop_tree(loops)
     }
 
     #[allow(clippy::needless_range_loop)]
@@ -85,11 +82,21 @@ impl LoopRecovery {
         loop_tree_map
     }
 
+    // Finds every block that is part of the loop represented by its tail and head in
+    // the back edge
+    fn find_loops(&self, cfg: &ControlFlowGraph, back_edges: BackEdges) -> MergedLoops {
+        let mut loops = Vec::new();
+
+        for &(head, tail) in &back_edges {
+            let loop_blocks = self.complete_loop(head, tail, cfg);
+            loops.push(loop_blocks);
+        }
+
+        Self::merge_loops(back_edges, loops)
+    }
+
     // Merges the loops with the same head into one
-    fn merge_loops(
-        back_edges: BackEdges,
-        loops: LoopBodies,
-    ) -> MergedLoops {
+    fn merge_loops(back_edges: BackEdges, loops: LoopBodies) -> MergedLoops {
         let mut merged_loops: MergedLoops = HashMap::new();
 
         for ((head, _), body) in back_edges.into_iter().zip(loops) {
@@ -97,19 +104,6 @@ impl LoopRecovery {
         }
 
         merged_loops
-    }
-
-    // Finds every block that is part of the loop represented by its tail and head in
-    // the back edge
-    fn find_loops(&self, cfg: &ControlFlowGraph, back_edges: &BackEdges) -> LoopBodies {
-        let mut loops = Vec::new();
-
-        for &(head, tail) in back_edges {
-            let loop_blocks = self.complete_loop(head, tail, cfg);
-            loops.push(loop_blocks);
-        }
-
-        loops
     }
 
     fn complete_loop(

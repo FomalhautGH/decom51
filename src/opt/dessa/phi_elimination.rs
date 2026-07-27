@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     common::{BlockId, Ir51, Operand},
-    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
+    opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

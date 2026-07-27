@@ -1,7 +1,7 @@
 use crate::{
     common::{Constant, Ir51, Operand, Phi},
     opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
+        cfg::{BasicBlock, ControlFlowGraph},
         const_propagation::{SSAState, TemporaryStates, VariableStates},
     },
 };

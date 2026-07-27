@@ -7,7 +7,7 @@ use crate::{
         Phi, Register, SSAVar, VarId,
     },
     opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
+        cfg::{BasicBlock, ControlFlowGraph},
         dessa::interference::{InterferenceGraph, do_they_interfere},
     },
 };

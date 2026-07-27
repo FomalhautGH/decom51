@@ -3,11 +3,13 @@ use crate::{
     opt::{
         cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
         dce::DeadCodeElimination, dessa::DeSSA, ebe::EmptyBlockElimination,
-        expr_aggregation::ExprAggregation, loop_recovery::LoopRecovery, rewriter::Rewriter,
-        ssa::SSABuilder, vwa::VariableWidthAggregation,
+        expr_aggregation::ExprAggregation, loop_recovery::LoopRecovery,
+        loop_structuring::LoopStructuring, rewriter::Rewriter, ssa::SSABuilder,
+        vwa::VariableWidthAggregation,
     },
 };
 
+mod cfg;
 mod cfg_restorer;
 mod const_propagation;
 mod dbe;
@@ -16,8 +18,10 @@ mod dessa;
 mod ebe;
 mod expr_aggregation;
 mod loop_recovery;
+mod loop_structuring;
 mod rewriter;
 mod ssa;
+mod structured_cfg;
 mod vwa;
 
 pub struct Optimizer;
@@ -55,6 +59,9 @@ impl Optimizer {
         expragr.execute(&mut cfg);
 
         let mut lr = LoopRecovery;
-        lr.execute(&cfg);
+        let loop_tree = lr.execute(&cfg);
+
+        let mut ls = LoopStructuring;
+        ls.execute(&mut cfg, loop_tree);
     }
 }

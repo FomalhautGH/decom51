@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     common::{BlockId, Ir51},
-    opt::cfg_restorer::{BasicBlock, ControlFlowGraph},
+    opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 
 // This phase does edge contration for blocks with just one jump

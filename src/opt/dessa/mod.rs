@@ -1,5 +1,5 @@
 use crate::opt::{
-    cfg_restorer::ControlFlowGraph,
+    cfg::ControlFlowGraph,
     dessa::{
         coalescing::VariableCoalescing,
         dessa_mapping::DeSSAMapping,

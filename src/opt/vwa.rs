@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::{
     common::{AddrSpace, BinOp, BlockId, Constant, Ir51, Operand, Register, TempIndex, VarId},
     opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
+        cfg::{BasicBlock, ControlFlowGraph},
         ssa::{CHKAlgorithm, Dominators},
     },
 };

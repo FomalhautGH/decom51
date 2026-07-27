@@ -5,7 +5,7 @@ use crate::{
     lir::{AddrSpace, BinOp},
     mir::{Expr, Mir51},
     opt::{
-        cfg_restorer::{BasicBlock, ControlFlowGraph},
+        cfg::{BasicBlock, ControlFlowGraph},
         vwa::TrackedValue,
     },
 };

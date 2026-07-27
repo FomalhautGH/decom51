@@ -1,5 +1,6 @@
-use crate::{common::BlockId, opt::cfg_restorer::ControlFlowGraph};
 use std::collections::HashSet;
+
+use crate::{common::BlockId, opt::cfg::ControlFlowGraph};
 
 #[derive(Default)]
 pub struct DeadBlockElimination {
