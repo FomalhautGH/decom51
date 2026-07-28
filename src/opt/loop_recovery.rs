@@ -16,9 +16,9 @@ type DominatorSets = HashMap<BlockId, HashSet<BlockId>>;
 // when a loop is inside another, whats is the body of that loop and the head
 #[derive(Debug, Clone)]
 pub struct LoopTree {
-    header: BlockId,
-    body: HashSet<BlockId>,
-    children: Vec<LoopTree>,
+    pub header: BlockId,
+    pub body: HashSet<BlockId>,
+    pub children: Vec<LoopTree>,
 }
 
 #[derive(Default)]

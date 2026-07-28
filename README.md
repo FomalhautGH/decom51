@@ -36,7 +36,7 @@ The bridge between machine logic and human logic. It hides the SSA mechanics and
 
 ### 🟡 Phase 5: Control Flow Structuring (In progress)
 The core challenge of decompilation. It pattern-matches the topology of the CFG to resurrect high-level control flow syntax.
-- [ ] **Loop Recovery:** Analyzes *backedges* and *loop headers* in the Dominator Tree to detect and reconstruct `while`, `do-while`, and `for` loops.
+- [x] **Loop Recovery:** Analyzes *backedges* and *loop headers* in the Dominator Tree to detect and reconstruct `while` loops.
 - [ ] **Condition Recovery:** Maps branch divergence and convergence points to reconstruct logical `if`, `else if`, and `else` blocks, removing `goto`/`jump` statements entirely.
 - [ ] **AST Generation:** Converts the topological graph into an Abstract Syntax Tree (AST), the final hierarchical representation of the C code.
 

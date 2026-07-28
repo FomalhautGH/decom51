@@ -5,7 +5,7 @@ use crate::{
         dce::DeadCodeElimination, dessa::DeSSA, ebe::EmptyBlockElimination,
         expr_aggregation::ExprAggregation, loop_recovery::LoopRecovery,
         loop_structuring::LoopStructuring, rewriter::Rewriter, ssa::SSABuilder,
-        vwa::VariableWidthAggregation,
+        structured_cfg::StructuredCFG, vwa::VariableWidthAggregation,
     },
 };
 
@@ -61,7 +61,9 @@ impl Optimizer {
         let mut lr = LoopRecovery;
         let loop_tree = lr.execute(&cfg);
 
-        let mut ls = LoopStructuring;
-        ls.execute(&mut cfg, loop_tree);
+        let mut structured_cfg = StructuredCFG::from(cfg);
+
+        let mut ls = LoopStructuring::new(&structured_cfg);
+        ls.execute(&mut structured_cfg, loop_tree);
     }
 }
