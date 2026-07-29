@@ -10,7 +10,10 @@ use crate::{
 #[derive(Debug)]
 pub enum BlockKind {
     Flat(Vec<Mir51>),
-    Macro(Vec<StructuredBlock>),
+    Macro {
+        header: Box<StructuredBlock>,
+        blocks: Vec<StructuredBlock>,
+    },
 }
 
 #[derive(Debug)]
@@ -50,14 +53,17 @@ impl Display for StructuredBlock {
                     }
                 }
             }
-            BlockKind::Macro(nested) => {
+            BlockKind::Macro { header, blocks } => {
                 writeln!(f, "{}Macro Block {}:", indent_str, self.id)?;
                 writeln!(f, "{} Predecessors: {:?}", indent_str, self.predecessors)?;
                 writeln!(f, "{} Successors: {:?}", indent_str, self.successors)?;
 
-                if !nested.is_empty() {
-                    writeln!(f, "{} Nested Blocks:", indent_str)?;
-                    for child in nested {
+                writeln!(f, "{} Header:", indent_str)?;
+                write!(f, "{:width$}", header, width = indent + 4)?;
+
+                if !blocks.is_empty() {
+                    writeln!(f, "{} Body Blocks:", indent_str)?;
+                    for child in blocks {
                         write!(f, "{:width$}", child, width = indent + 4)?;
                     }
                 }

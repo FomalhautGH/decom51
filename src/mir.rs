@@ -129,7 +129,7 @@ pub enum Mir51 {
         args: Vec<Expr>,
     },
 
-    Goto(usize),
+    Goto(BlockId),
     Return,
 }
 

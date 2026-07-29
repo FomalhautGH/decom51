@@ -1,19 +1,62 @@
-use crate::mir::Mir51;
+use crate::{
+    common::BlockId,
+    mir::{Expr, Mir51},
+};
 use std::fmt::{self, Display, Formatter};
 
+#[derive(Debug)]
 pub enum Hir51 {
-    Block {
-        instr: Vec<Mir51>,
+    Assign {
+        dest: Expr,
+        src: Expr,
     },
 
-    Loop {
+    Store {
+        dest_ptr: Expr,
+        value: Expr,
+    },
+
+    While {
+        cond: Expr,
         body: Vec<Hir51>,
     },
 
     IfElse {
+        cond: Expr,
         true_body: Vec<Hir51>,
         false_body: Option<Vec<Hir51>>,
     },
+
+    Goto {
+        jmp: BlockId,
+    },
+
+    Call {
+        jmp: BlockId,
+        args: Vec<Expr>,
+        ret_val: Option<Expr>,
+    },
+}
+
+impl From<Mir51> for Hir51 {
+    fn from(value: Mir51) -> Self {
+        match value {
+            Mir51::Assign { dest, src } => Hir51::Assign { dest, src },
+            Mir51::Store { dest_ptr, value } => Hir51::Store { dest_ptr, value },
+            Mir51::Call { jmp, args } => Hir51::Call {
+                jmp,
+                args,
+                ret_val: None,
+            },
+            Mir51::If {
+                cond,
+                true_jmp,
+                false_jmp,
+            } => unreachable!(),
+            Mir51::Goto(bid) => Hir51::Goto { jmp: bid },
+            Mir51::Return => unreachable!(),
+        }
+    }
 }
 
 impl Display for Hir51 {
@@ -22,14 +65,16 @@ impl Display for Hir51 {
         let indent_str = "    ".repeat(indent);
 
         match self {
-            Hir51::Block { instr } => {
-                for i in instr {
-                    writeln!(f, "{}{}", indent_str, i)?;
-                }
+            Hir51::Assign { dest, src } => {
+                writeln!(f, "{}{} = {};", indent_str, dest, src)?;
             }
 
-            Hir51::Loop { body } => {
-                writeln!(f, "{}loop {{", indent_str)?;
+            Hir51::Store { dest_ptr, value } => {
+                writeln!(f, "{}*{} = {};", indent_str, dest_ptr, value)?;
+            }
+
+            Hir51::While { cond, body } => {
+                writeln!(f, "{}while ({}) {{", indent_str, cond)?;
                 for child in body {
                     write!(f, "{:width$}", child, width = indent + 1)?;
                 }
@@ -37,10 +82,11 @@ impl Display for Hir51 {
             }
 
             Hir51::IfElse {
+                cond,
                 true_body,
                 false_body,
             } => {
-                writeln!(f, "{}if (?) {{", indent_str)?;
+                writeln!(f, "{}if ({}) {{", indent_str, cond)?;
                 for child in true_body {
                     write!(f, "{:width$}", child, width = indent + 1)?;
                 }
@@ -51,6 +97,27 @@ impl Display for Hir51 {
                     }
                 }
                 writeln!(f, "{}}}", indent_str)?;
+            }
+
+            Hir51::Goto { jmp } => {
+                writeln!(f, "{}goto Block_{};", indent_str, jmp)?;
+            }
+
+            Hir51::Call { jmp, args, ret_val } => {
+                if let Some(ret) = ret_val {
+                    write!(f, "{}{} = call Block_{}", indent_str, ret, jmp)?;
+                } else {
+                    write!(f, "{}call Block_{}", indent_str, jmp)?;
+                }
+
+                write!(f, "(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                writeln!(f, ");")?;
             }
         }
 

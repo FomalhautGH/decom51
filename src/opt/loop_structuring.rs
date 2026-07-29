@@ -57,14 +57,18 @@ impl LoopStructuring {
         let body_block_ids = self.gather_ids(&loop_tree.body);
         let (predecessors, successors) = self.compute_edges(header_block, &body_block_ids, cfg);
         let new_block_id = self.new_id();
-        let nested_blocks = self.transpose_blocks(&body_block_ids, cfg, new_block_id);
+        let (header, nested_blocks) =
+            self.transpose_blocks(cfg, loop_tree.header, &body_block_ids, new_block_id);
 
         // Insert block in the Graph
         let macro_block = StructuredBlock {
             id: new_block_id,
             successors: successors.into_iter().collect(),
             predecessors: predecessors.into_iter().collect(),
-            kind: BlockKind::Macro(nested_blocks),
+            kind: BlockKind::Macro {
+                header: Box::new(header),
+                blocks: nested_blocks,
+            },
         };
 
         cfg.blocks.insert(macro_block.id, macro_block);
@@ -73,20 +77,28 @@ impl LoopStructuring {
     // Removing the ids from the main cfg
     fn transpose_blocks(
         &mut self,
-        body_block_ids: &HashSet<BlockId>,
         cfg: &mut StructuredCFG,
+        header_block_id: BlockId,
+        body_block_ids: &HashSet<BlockId>,
         into_block_id: BlockId,
-    ) -> Vec<StructuredBlock> {
+    ) -> (StructuredBlock, Vec<StructuredBlock>) {
         let mut nested_blocks = Vec::new();
 
+        let resolved_header_id = self.resolve_alias(header_block_id);
+        let header_block = cfg.blocks.remove(&resolved_header_id).unwrap();
+
+        self.block_aliases.insert(resolved_header_id, into_block_id);
+        self.block_aliases.insert(header_block_id, into_block_id);
+
         for block_id in body_block_ids {
-            let block = cfg.blocks.remove(block_id).unwrap();
-            nested_blocks.push(block);
-            self.block_aliases.insert(*block_id, into_block_id);
+            if let Some(block) = cfg.blocks.remove(block_id) {
+                nested_blocks.push(block);
+                self.block_aliases.insert(*block_id, into_block_id);
+            }
         }
 
         nested_blocks.sort_by_key(|b| b.id);
-        nested_blocks
+        (header_block, nested_blocks)
     }
 
     // Calculating the predecessors and successors of the macro block, successors are

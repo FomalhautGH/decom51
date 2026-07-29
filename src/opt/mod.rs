@@ -1,7 +1,7 @@
 use crate::{
     common::Ir51,
     opt::{
-        call_recovery::CallRecovery, cfg_restorer::CFGRestorer,
+        call_recovery::CallRecovery, cfg_restorer::CFGRestorer, cle::ControlLogicExtraction,
         const_propagation::ConstPropagation, dbe::DeadBlockElimination, dce::DeadCodeElimination,
         dessa::DeSSA, ebe::EmptyBlockElimination, expr_aggregation::ExprAggregation,
         loop_recovery::LoopRecovery, loop_structuring::LoopStructuring, rewriter::Rewriter,
@@ -12,6 +12,7 @@ use crate::{
 mod call_recovery;
 mod cfg;
 mod cfg_restorer;
+mod cle;
 mod const_propagation;
 mod dbe;
 mod dce;
@@ -69,5 +70,8 @@ impl Optimizer {
 
         let mut ls = LoopStructuring::new(&structured_cfg);
         ls.execute(&mut structured_cfg, loop_tree);
+
+        let mut cle = ControlLogicExtraction::default();
+        cle.execute(structured_cfg);
     }
 }
