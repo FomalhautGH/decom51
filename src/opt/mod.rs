@@ -1,14 +1,15 @@
 use crate::{
     common::Ir51,
     opt::{
-        cfg_restorer::CFGRestorer, const_propagation::ConstPropagation, dbe::DeadBlockElimination,
-        dce::DeadCodeElimination, dessa::DeSSA, ebe::EmptyBlockElimination,
-        expr_aggregation::ExprAggregation, loop_recovery::LoopRecovery,
-        loop_structuring::LoopStructuring, rewriter::Rewriter, ssa::SSABuilder,
-        structured_cfg::StructuredCFG, vwa::VariableWidthAggregation,
+        call_recovery::CallRecovery, cfg_restorer::CFGRestorer,
+        const_propagation::ConstPropagation, dbe::DeadBlockElimination, dce::DeadCodeElimination,
+        dessa::DeSSA, ebe::EmptyBlockElimination, expr_aggregation::ExprAggregation,
+        loop_recovery::LoopRecovery, loop_structuring::LoopStructuring, rewriter::Rewriter,
+        ssa::SSABuilder, structured_cfg::StructuredCFG, vwa::VariableWidthAggregation,
     },
 };
 
+mod call_recovery;
 mod cfg;
 mod cfg_restorer;
 mod const_propagation;
@@ -57,6 +58,9 @@ impl Optimizer {
 
         let mut expragr = ExprAggregation::default();
         expragr.execute(&mut cfg);
+
+        let call_recovery = CallRecovery;
+        call_recovery.execute(&mut cfg);
 
         let mut lr = LoopRecovery;
         let loop_tree = lr.execute(&cfg);

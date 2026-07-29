@@ -83,7 +83,10 @@ impl ExprAggregation {
 
     fn call(&mut self, bid: BlockId) -> Option<()> {
         self.definitions.clear();
-        self.mir_instructions.push(Mir51::Call(bid));
+        self.mir_instructions.push(Mir51::Call {
+            jmp: bid,
+            args: Vec::new(),
+        });
         Some(())
     }
 

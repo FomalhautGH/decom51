@@ -3,7 +3,10 @@ use std::{
     fmt::{Display, Formatter, Result},
 };
 
-use crate::lir::{Operand, Register};
+use crate::{
+    common::BlockId,
+    lir::{Operand, Register},
+};
 use std::prelude::v1;
 
 #[derive(Debug, Clone)]
@@ -63,6 +66,26 @@ impl Expr {
             }
         }
     }
+
+    pub fn get_size(&self) -> usize {
+        match &self {
+            Expr::Register(_) => 1,
+            Expr::Constant(_) => 1,
+            Expr::Var(_) => 1,
+            Expr::Temp(_) => 1,
+            Expr::Add(expr, expr1)
+            | Expr::Sub(expr, expr1)
+            | Expr::Eq(expr, expr1)
+            | Expr::Lt(expr, expr1)
+            | Expr::Gt(expr, expr1)
+            | Expr::Le(expr, expr1)
+            | Expr::Ge(expr, expr1)
+            | Expr::Ne(expr, expr1)
+            | Expr::Or(expr, expr1) => expr.get_size() + expr1.get_size(),
+            Expr::Concat(exprs) => exprs.iter().map(|expr| expr.get_size()).sum(),
+            Expr::Deref(expr) => expr.get_size(),
+        }
+    }
 }
 
 impl TryFrom<Operand> for Expr {
@@ -97,13 +120,54 @@ pub enum Mir51 {
 
     If {
         cond: Expr,
-        true_jmp: usize,
-        false_jmp: usize,
+        true_jmp: BlockId,
+        false_jmp: BlockId,
+    },
+
+    Call {
+        jmp: BlockId,
+        args: Vec<Expr>,
     },
 
     Goto(usize),
-    Call(usize),
     Return,
+}
+
+impl Mir51 {
+    // Checks if instruction is sp increment and returns its size
+    pub fn is_sp_increment(&self) -> Option<usize> {
+        match &self {
+            Mir51::Assign {
+                dest: Expr::Register(Register::SP),
+                src: Expr::Add(sp, value),
+            } if matches!(**sp, Expr::Register(Register::SP)) => {
+                if let Expr::Constant(v) = **value {
+                    Some(v as usize)
+                } else {
+                    None
+                }
+            }
+
+            _ => None,
+        }
+    }
+
+    pub fn is_sp_decrement(&self) -> Option<usize> {
+        match &self {
+            Mir51::Assign {
+                dest: Expr::Register(Register::SP),
+                src: Expr::Sub(sp, value),
+            } if matches!(**sp, Expr::Register(Register::SP)) => {
+                if let Expr::Constant(v) = **value {
+                    Some(v as usize)
+                } else {
+                    None
+                }
+            }
+
+            _ => None,
+        }
+    }
 }
 
 impl Display for Expr {
@@ -154,7 +218,20 @@ impl Display for Mir51 {
                 )
             }
             Mir51::Goto(label) => write!(f, "goto Block_{}", label),
-            Mir51::Call(label) => write!(f, "call Block_{}", label),
+            Mir51::Call { jmp, args } => {
+                write!(f, "call Block_{}", jmp)?;
+                if !args.is_empty() {
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", arg)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            }
             Mir51::Return => write!(f, "ret"),
         }
     }

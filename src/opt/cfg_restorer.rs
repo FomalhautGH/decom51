@@ -1,11 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::{Display, Error, Formatter},
 };
 
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi},
-    mir::Mir51,
+    common::{BlockId, Ir51},
     opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 
