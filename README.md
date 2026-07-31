@@ -38,8 +38,8 @@ The bridge between machine logic and human logic. It hides the SSA mechanics and
 The core challenge of decompilation. It pattern-matches the topology of the CFG to resurrect high-level control flow syntax.
 - [x] **Loop Recovery:** Analyzes *backedges* and *loop headers* in the Dominator Tree to detect and reconstruct `while` loops.
 - [ ] **Condition Recovery:** Maps branch divergence and convergence points to reconstruct logical `if`, `else if`, and `else` blocks, removing `goto`/`jump` statements entirely.
-- [ ] **AST Generation:** Converts the topological graph into an Abstract Syntax Tree (AST), the final hierarchical representation of the C code.
+- [x] **AST Generation:** Converts the topological graph into an Abstract Syntax Tree (AST), the final hierarchical representation of the C code.
 
-### 🔴 Phase 6: Code Emission (To Do)
+### 🟢 Phase 6: Code Emission
 The final output stage.
-- [ ] **C Code Generation:** Traverses the final AST to emit formatted, highly readable C source code, applying proper indentation, variable typing, and syntax sugar.
+- [x] **C Code Generation:** Traverses the final AST to emit formatted, highly readable C source code, applying proper indentation, variable typing, and syntax sugar.

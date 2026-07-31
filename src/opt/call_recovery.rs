@@ -1,9 +1,6 @@
 use crate::{
     lir::Register,
-    mir::{
-        Expr::{self},
-        Mir51,
-    },
+    mir::{Expr, Mir51},
     opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 
@@ -20,30 +17,23 @@ impl CallRecovery {
     // TODO: Fix the bugs in this phase: remove the correct instructions,
     // better tracking of arguments
     fn recover_calls(&self, block: &mut BasicBlock) -> bool {
-        let mut size = None;
         let mut call_args = None;
-
         let mut params: Vec<Expr> = Vec::new();
         let mut remove_idx = Vec::new();
 
         for (i, ir) in block.mirs.iter_mut().enumerate() {
             match ir {
-                Mir51::Assign { dest, src } if let Some(v) = ir.is_sp_increment() => {
-                    size = Some(v);
+                Mir51::Assign { .. } if ir.is_sp_increment().is_some() => {
                     remove_idx.push(i);
                 }
 
-                Mir51::Assign { dest, src }
-                    if let Some(v) = ir.is_sp_decrement()
-                        && Some(v) == size =>
-                {
-                    size = None;
+                Mir51::Assign { .. } if ir.is_sp_decrement().is_some() => {
                     remove_idx.push(i);
                 }
 
                 Mir51::Assign {
-                    dest,
                     src: Expr::Deref(src_ptr),
+                    ..
                 } if matches!(**src_ptr, Expr::Register(Register::SP)) => {
                     remove_idx.push(i);
                 }
@@ -52,12 +42,8 @@ impl CallRecovery {
                     dest_ptr: Expr::Register(Register::SP),
                     value,
                 } => {
-                    if let Some(size) = size
-                        && value.get_size() == size
-                    {
-                        remove_idx.push(i);
-                        params.push(value.clone());
-                    }
+                    remove_idx.push(i);
+                    params.push(value.clone());
                 }
 
                 Mir51::Call { args, .. } => {
@@ -72,9 +58,7 @@ impl CallRecovery {
             }
         }
 
-        if let Some(args_ptr) = call_args
-            && size.is_none()
-        {
+        if let Some(args_ptr) = call_args {
             *args_ptr = params;
 
             let mut index = 0;

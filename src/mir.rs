@@ -67,26 +67,6 @@ impl Expr {
         }
     }
 
-    pub fn get_size(&self) -> usize {
-        match &self {
-            Expr::Register(_) => 1,
-            Expr::Constant(_) => 1,
-            Expr::Var(_) => 1,
-            Expr::Temp(_) => 1,
-            Expr::Add(expr, expr1)
-            | Expr::Sub(expr, expr1)
-            | Expr::Eq(expr, expr1)
-            | Expr::Lt(expr, expr1)
-            | Expr::Gt(expr, expr1)
-            | Expr::Le(expr, expr1)
-            | Expr::Ge(expr, expr1)
-            | Expr::Ne(expr, expr1)
-            | Expr::Or(expr, expr1) => expr.get_size() + expr1.get_size(),
-            Expr::Concat(exprs) => exprs.iter().map(|expr| expr.get_size()).sum(),
-            Expr::Deref(expr) => expr.get_size(),
-        }
-    }
-
     pub fn negate(self) -> Self {
         match self {
             Expr::Eq(lhs, rhs) if matches!(*rhs, Expr::Constant(0)) => *lhs,
