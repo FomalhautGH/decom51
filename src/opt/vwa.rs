@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    cmp,
+    collections::{HashMap, HashSet},
+};
 
 use crate::{
     common::{AddrSpace, BinOp, BlockId, Constant, Ir51, Operand, Register, TempIndex, VarId},
@@ -105,11 +108,222 @@ impl AluPatternTracker {
 }
 
 #[derive(Default)]
-pub struct VariableWidthAggregation;
+pub struct VariableWidthAggregation {
+    max_local_id: usize,
+    definitions: HashMap<Operand, (BlockId, usize)>,
+    concats: HashMap<Operand, usize>, // Concat to its local varid aggregate
+}
 
 // TODO: this phase probably needs to be more general
 impl VariableWidthAggregation {
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
+        self.concatenate_variables(cfg);
+        self.merge_variables(cfg);
+
+        if cfg!(debug_assertions) {
+            println!("======================== VAR WIDTH AGGREGATION ========================");
+            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
+            }
+        }
+    }
+
+    fn merge_variables(&mut self, cfg: &mut ControlFlowGraph) {
+        self.max_local_id = 0;
+        self.definitions.clear();
+        self.concats.clear();
+
+        // Finds where all the variables are defined
+        for block in cfg.blocks.values() {
+            self.find_definitions(block);
+        }
+
+        for block in cfg.blocks.values_mut() {
+            self.replace_concats(block);
+        }
+
+        self.merge(cfg);
+
+        println!("{:?}", self.definitions);
+        println!("{:?}", self.concats);
+        println!("{:?}", self.max_local_id);
+    }
+
+    // TODO: find every plase an assert could be useful
+    fn merge(&mut self, cfg: &mut ControlFlowGraph) {
+        let merge_items = self.find_where_to_merge();
+        Self::merge_all(merge_items, cfg);
+    }
+
+    fn merge_all(
+        mut merge_items: Vec<(BlockId, usize, usize, usize, usize)>,
+        cfg: &mut ControlFlowGraph,
+    ) {
+        merge_items.sort_by_key(|a| a.1);
+
+        for (blockv1, line, idxv1, idxv2, new_id) in merge_items {
+            let block = cfg.blocks.get_mut(&blockv1).unwrap();
+            let src = Self::merge_sources(&block.irs[idxv1], &block.irs[idxv2]).unwrap();
+
+            let declaration = Ir51::Move {
+                dest: Operand::Local(new_id),
+                src,
+            };
+
+            let mut index = 0;
+            block.irs.retain(|_| {
+                let keep = index != idxv1 && index != idxv2;
+                index += 1;
+                keep
+            });
+
+            block.irs.insert(line, declaration);
+        }
+    }
+
+    fn find_where_to_merge(&self) -> Vec<(BlockId, usize, usize, usize, usize)> {
+        let mut merge_items = Vec::new();
+
+        for (conc, new_id) in &self.concats {
+            if let Operand::Concat(v1, v2) = conc {
+                let v1 = Operand::Local(*v1);
+                let v2 = Operand::Local(*v2);
+
+                let (posv1, posv2) = (
+                    self.definitions.get(&v1).unwrap(),
+                    self.definitions.get(&v2).unwrap(),
+                );
+
+                let (blockv1, blockv2) = (posv1.0, posv2.0);
+                let (idxv1, idxv2) = (posv1.1, posv2.1);
+                assert!(blockv1 == blockv2);
+
+                let line = cmp::min(idxv1, idxv2);
+                merge_items.push((blockv1, line, idxv1, idxv2, *new_id));
+            }
+        }
+
+        merge_items
+    }
+
+    fn merge_sources(ir1: &Ir51, ir2: &Ir51) -> Option<Operand> {
+        let Ir51::Move { src: src1, .. } = ir1 else {
+            return None;
+        };
+
+        let Ir51::Move { src: src2, .. } = ir2 else {
+            return None;
+        };
+
+        match (src1, src2) {
+            (Operand::Constant(c1), Operand::Constant(c2)) => {
+                Some(Operand::Constant(*c2 << BITS | *c1))
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn replace_concats(&mut self, block: &mut BasicBlock) {
+        for ir in block.irs.iter_mut() {
+            match ir {
+                Ir51::Move { dest, src } => {
+                    self.check_concat(src);
+                    self.check_concat(dest);
+                }
+
+                Ir51::BinOp { dest, lhs, rhs, .. } => {
+                    self.check_concat(lhs);
+                    self.check_concat(rhs);
+                    self.check_concat(dest);
+                }
+
+                Ir51::Store {
+                    dest_ptr, value, ..
+                } => {
+                    self.check_concat(dest_ptr);
+                    self.check_concat(value);
+                }
+
+                Ir51::Load { dest, src_ptr, .. } => {
+                    self.check_concat(src_ptr);
+                    self.check_concat(dest);
+                }
+
+                Ir51::BranchIf { cond, .. } => self.check_concat(cond),
+                Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
+            };
+        }
+    }
+
+    fn check_concat(&mut self, op: &mut Operand) {
+        if let Operand::Concat(v1, v2) = op {
+            let v1 = Operand::Local(*v1);
+            let v2 = Operand::Local(*v2);
+
+            if self.definitions.contains_key(&v1) && self.definitions.contains_key(&v2) {
+                let new_id = if let Some(id) = self.concats.get(op) {
+                    *id
+                } else {
+                    self.max_local_id += 1;
+                    self.concats.insert(*op, self.max_local_id);
+                    self.max_local_id
+                };
+
+                *op = Operand::Local(new_id);
+            }
+        }
+    }
+
+    // We find declarations of local variables that are never used alone
+    // in another operation
+    fn find_definitions(&mut self, block: &BasicBlock) {
+        for (i, ir) in block.irs.iter().enumerate() {
+            match ir {
+                Ir51::Move { dest, src } => {
+                    self.usage(src);
+                    self.definition(dest, block.id, i);
+                }
+
+                Ir51::BinOp { dest, lhs, rhs, .. } => {
+                    self.usage(lhs);
+                    self.usage(rhs);
+                    self.definition(dest, block.id, i);
+                }
+
+                Ir51::Store {
+                    dest_ptr, value, ..
+                } => {
+                    self.usage(dest_ptr);
+                    self.usage(value);
+                }
+
+                Ir51::Load { dest, src_ptr, .. } => {
+                    self.usage(src_ptr);
+                    self.definition(dest, block.id, i);
+                }
+
+                Ir51::BranchIf { cond, .. } => self.usage(cond),
+                Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
+            };
+        }
+    }
+
+    fn definition(&mut self, op: &Operand, blockid: BlockId, index: usize) {
+        if let Operand::Local(id) = op {
+            self.max_local_id = cmp::max(*id, self.max_local_id);
+            self.definitions.insert(*op, (blockid, index));
+        }
+    }
+
+    fn usage(&mut self, op: &Operand) {
+        if let Operand::Local(_) = op {
+            self.definitions.remove(op);
+        }
+    }
+
+    fn concatenate_variables(&mut self, cfg: &mut ControlFlowGraph) {
         let mut modified = true;
         while modified {
             modified = false;
@@ -121,15 +335,6 @@ impl VariableWidthAggregation {
             let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
             let immediate_dominators = CHKAlgorithm::execute(&shared_blocks);
             modified |= self.fuse_loop_increments(cfg, &immediate_dominators);
-        }
-
-        if cfg!(debug_assertions) {
-            println!("======================== VAR WIDTH AGGREGATION ========================");
-            let mut sorted_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
-            sorted_blocks.sort_by_key(|b| b.id);
-            for block in sorted_blocks {
-                print!("{}", block);
-            }
         }
     }
 

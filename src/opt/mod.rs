@@ -1,5 +1,6 @@
 use crate::{
     common::Ir51,
+    hir::Hir51,
     opt::{
         call_recovery::CallRecovery, cfg_restorer::CFGRestorer, cle::ControlLogicExtraction,
         const_propagation::ConstPropagation, dbe::DeadBlockElimination, dce::DeadCodeElimination,
@@ -29,7 +30,7 @@ mod vwa;
 pub struct Optimizer;
 
 impl Optimizer {
-    pub fn optimize(ir_code: &mut [Ir51]) {
+    pub fn optimize(ir_code: &mut [Ir51]) -> Vec<Hir51> {
         let mut cfg = CFGRestorer::restore_raw_cfg(ir_code);
 
         let mut dbe = DeadBlockElimination::default();
@@ -54,7 +55,7 @@ impl Optimizer {
         let mut dbe = DeadBlockElimination::default();
         dbe.execute(&mut cfg);
 
-        let mut vwa = VariableWidthAggregation;
+        let mut vwa = VariableWidthAggregation::default();
         vwa.execute(&mut cfg);
 
         let mut expragr = ExprAggregation::default();
@@ -73,5 +74,7 @@ impl Optimizer {
 
         let mut cle = ControlLogicExtraction::default();
         cle.execute(structured_cfg);
+
+        cle.extracted_hirs
     }
 }

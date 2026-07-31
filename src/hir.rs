@@ -48,11 +48,7 @@ impl From<Mir51> for Hir51 {
                 args,
                 ret_val: None,
             },
-            Mir51::If {
-                cond,
-                true_jmp,
-                false_jmp,
-            } => unreachable!(),
+            Mir51::If { .. } => unreachable!(),
             Mir51::Goto(bid) => Hir51::Goto { jmp: bid },
             Mir51::Return => unreachable!(),
         }
@@ -105,9 +101,9 @@ impl Display for Hir51 {
 
             Hir51::Call { jmp, args, ret_val } => {
                 if let Some(ret) = ret_val {
-                    write!(f, "{}{} = call Block_{}", indent_str, ret, jmp)?;
+                    write!(f, "{}{} = Block_{}", indent_str, ret, jmp)?;
                 } else {
-                    write!(f, "{}call Block_{}", indent_str, jmp)?;
+                    write!(f, "{}Block_{}", indent_str, jmp)?;
                 }
 
                 write!(f, "(")?;

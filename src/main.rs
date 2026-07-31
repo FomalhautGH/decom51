@@ -2,7 +2,7 @@
 
 use std::io;
 
-use crate::{lifting::Lifting, opt::Optimizer, syntax::SyntaxAnalyzer};
+use crate::{codegen::CodeGeneration, lifting::Lifting, opt::Optimizer, syntax::SyntaxAnalyzer};
 
 mod codegen;
 mod common;
@@ -21,7 +21,9 @@ fn main() -> io::Result<()> {
 
     let instructions = SyntaxAnalyzer::analyze(hex_file).unwrap();
     let mut ir_code = Lifting::lift(&instructions);
-    Optimizer::optimize(&mut ir_code);
+    let hirs = Optimizer::optimize(&mut ir_code);
+
+    CodeGeneration::generate(&hirs);
 
     Ok(())
 }

@@ -86,6 +86,20 @@ impl Expr {
             Expr::Deref(expr) => expr.get_size(),
         }
     }
+
+    pub fn negate(self) -> Self {
+        match self {
+            Expr::Eq(lhs, rhs) if matches!(*rhs, Expr::Constant(0)) => *lhs,
+
+            Expr::Lt(lhs, rhs) => Expr::Ge(lhs, rhs),
+            Expr::Le(lhs, rhs) => Expr::Gt(lhs, rhs),
+            Expr::Gt(lhs, rhs) => Expr::Le(lhs, rhs),
+            Expr::Ge(lhs, rhs) => Expr::Lt(lhs, rhs),
+            Expr::Ne(lhs, rhs) => Expr::Eq(lhs, rhs),
+
+            e => Expr::Eq(Box::new(e), Box::new(Expr::Constant(0))),
+        }
+    }
 }
 
 impl TryFrom<Operand> for Expr {
@@ -174,9 +188,9 @@ impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expr::Register(reg) => write!(f, "{:?}", reg),
-            Expr::Constant(c) => write!(f, "#0x{:02X}", c),
-            Expr::Var(id) => write!(f, "v{}", id),
-            Expr::Temp(idx) => write!(f, "t{}", idx),
+            Expr::Constant(c) => write!(f, "{c}"),
+            Expr::Var(id) => write!(f, "var{}", id),
+            Expr::Temp(idx) => write!(f, "temp{}", idx),
             Expr::Add(lhs, rhs) => write!(f, "({} + {})", lhs, rhs),
             Expr::Sub(lhs, rhs) => write!(f, "({} - {})", lhs, rhs),
             Expr::Eq(lhs, rhs) => write!(f, "({} == {})", lhs, rhs),
