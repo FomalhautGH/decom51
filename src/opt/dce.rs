@@ -1,6 +1,6 @@
 use crate::{
     common::{BlockId, Ir51, Operand, Phi, SSAVar, TempSSAVar},
-    lir::format_addr,
+    lir::{format_addr, is_iram_addr},
     opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 use std::collections::HashMap;
@@ -118,6 +118,7 @@ impl DeadCodeElimination {
                     *counter -= 1;
                     if let Some(def_loc) = self.variable_defs.get(&key)
                         && *counter == 0
+                        && !is_iram_addr(*addr)
                     {
                         self.dead_instructions.push(*def_loc);
                     }
@@ -213,7 +214,7 @@ impl DeadCodeElimination {
     fn check_usage(&mut self, dest: Operand, loc: UseLocation) {
         match dest {
             Operand::SSAVar { addr, version } => {
-                if !self.variable_uses.contains_key(&(addr, version)) {
+                if !is_iram_addr(addr) && !self.variable_uses.contains_key(&(addr, version)) {
                     self.dead_instructions.push(loc);
                 }
             }

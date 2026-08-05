@@ -45,6 +45,9 @@ impl Optimizer {
         let rewriter = Rewriter::new(known_values, known_temps);
         rewriter.rewrite(&mut cfg);
 
+        let mut dbe = DeadBlockElimination::default();
+        dbe.execute(&mut cfg);
+
         let mut dce = DeadCodeElimination::default();
         dce.execute(&mut cfg);
 

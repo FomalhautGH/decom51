@@ -37,6 +37,9 @@ impl<'a> Rewriter<'a> {
     fn rewrite_block(&self, block: &mut BasicBlock) {
         block.phis.iter_mut().for_each(|phi| self.rewrite_phi(phi));
         block.irs.iter_mut().for_each(|ir| self.rewrite_ir(ir));
+        if let Some(Ir51::Jump(target)) = block.irs.last() {
+            block.successors = vec![*target];
+        }
     }
 
     fn rewrite_phi(&self, phi: &mut Phi) {

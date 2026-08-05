@@ -36,6 +36,8 @@ pub enum Hir51 {
         args: Vec<Expr>,
         ret_val: Option<Expr>,
     },
+
+    Return,
 }
 
 impl From<Mir51> for Hir51 {
@@ -50,7 +52,7 @@ impl From<Mir51> for Hir51 {
             },
             Mir51::If { .. } => unreachable!(),
             Mir51::Goto(bid) => Hir51::Goto { jmp: bid },
-            Mir51::Return => unreachable!(),
+            Mir51::Return => Hir51::Return,
         }
     }
 }
@@ -114,6 +116,10 @@ impl Display for Hir51 {
                     write!(f, "{}", arg)?;
                 }
                 writeln!(f, ");")?;
+            }
+
+            Hir51::Return => {
+                writeln!(f, "{}return;", indent_str)?;
             }
         }
 

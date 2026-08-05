@@ -24,6 +24,8 @@ pub enum TokenType {
     Pop,
     Nop,
     Cjne,
+    Jz,
+    Jnz,
 
     // Registers
     Reg(Register),
@@ -140,6 +142,8 @@ impl Lexer {
             "SUBB" => TokenType::Subb,
             "LJMP" => TokenType::Ljmp,
             "JNC" => TokenType::Jnc,
+            "JZ" => TokenType::Jz,
+            "JNZ" => TokenType::Jnz,
             "CLR" => TokenType::Clr,
             "LCALL" => TokenType::Lcall,
             "XRL" => TokenType::Xrl,

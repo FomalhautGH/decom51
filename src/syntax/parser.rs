@@ -18,12 +18,15 @@ pub enum Argument {
 pub enum Instruction {
     Mov(Argument, Argument),
     Clr(Argument),
+    Add(Argument, Argument),
     Subb(Argument, Argument),
     Cjne(Argument, Argument, usize),
     Inc(Argument),
 
     Lcall(usize),
     Jnc(usize),
+    Jz(usize),
+    Jnz(usize),
     Ljmp(usize),
 
     Push(u8),
@@ -55,15 +58,20 @@ impl<'a> Parser<'a> {
                 TokenType::Mov => self.mov(),
                 TokenType::Label(labnum) => self.label(labnum),
                 TokenType::Clr => self.clr(),
+                TokenType::Add => self.add(),
                 TokenType::Subb => self.subb(),
-                TokenType::Lcall | TokenType::Ljmp | TokenType::Jnc => self.jump(tok),
+                TokenType::Lcall
+                | TokenType::Ljmp
+                | TokenType::Jnc
+                | TokenType::Jz
+                | TokenType::Jnz => self.jump(tok),
                 TokenType::Push | TokenType::Pop => self.pushpop(tok),
                 TokenType::Inc => self.inc(),
                 TokenType::Cjne => self.cjne(),
                 TokenType::Db(data) => Instruction::Db(data),
                 TokenType::Ret => Instruction::Ret,
                 TokenType::End => Instruction::End,
-                _ => todo!(),
+                _ => todo!("{tok:?}"),
             };
 
             if instr == Instruction::End {
@@ -84,14 +92,8 @@ impl<'a> Parser<'a> {
         let reg = self.consume();
 
         let op = match reg {
-            TokenType::Reg(Register::R0) => Argument::Reg(Register::R0),
-            TokenType::Reg(Register::R1) => Argument::Reg(Register::R1),
-            TokenType::Reg(Register::R2) => Argument::Reg(Register::R2),
-            TokenType::Reg(Register::R3) => Argument::Reg(Register::R3),
-            TokenType::Reg(Register::R4) => Argument::Reg(Register::R4),
-            TokenType::Reg(Register::R5) => Argument::Reg(Register::R5),
-            TokenType::Reg(Register::R6) => Argument::Reg(Register::R6),
-            TokenType::Reg(Register::R7) => Argument::Reg(Register::R7),
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
             _ => unreachable!(),
         };
 
@@ -119,12 +121,31 @@ impl<'a> Parser<'a> {
             return match current_tok {
                 TokenType::Ljmp => Instruction::Ljmp(labnum),
                 TokenType::Jnc => Instruction::Jnc(labnum),
+                TokenType::Jz => Instruction::Jz(labnum),
+                TokenType::Jnz => Instruction::Jnz(labnum),
                 TokenType::Lcall => Instruction::Lcall(labnum),
                 _ => unreachable!(),
             };
         }
 
         unreachable!()
+    }
+
+    fn add(&mut self) -> Instruction {
+        let op1 = self.consume();
+        assert!(op1 == TokenType::Reg(Register::A));
+
+        let _comma = self.consume();
+
+        let op2 = self.consume();
+        let op2 = match op2 {
+            TokenType::Reg(reg) => Argument::Reg(reg),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            TokenType::Immediate(imm) => Argument::Data8(imm as u8),
+            _ => unreachable!(),
+        };
+
+        Instruction::Add(Argument::Reg(Register::A), op2)
     }
 
     fn subb(&mut self) -> Instruction {
@@ -143,6 +164,8 @@ impl<'a> Parser<'a> {
             TokenType::Reg(Register::R5) => Argument::Reg(Register::R5),
             TokenType::Reg(Register::R6) => Argument::Reg(Register::R6),
             TokenType::Reg(Register::R7) => Argument::Reg(Register::R7),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            TokenType::Immediate(imm) => Argument::Data8(imm as u8),
             _ => unreachable!(),
         };
 
@@ -228,10 +251,10 @@ impl<'a> Parser<'a> {
 
         let op2 = match op2 {
             TokenType::Escargot => todo!(),
-            TokenType::Reg(Register::A) => todo!(),
             TokenType::Reg(Register::C) => todo!(),
             TokenType::Reg(Register::DPL) => todo!(),
             TokenType::Reg(Register::DPH) => todo!(),
+            TokenType::Reg(Register::A) => Argument::Reg(Register::A),
             TokenType::Reg(Register::R0) => Argument::Reg(Register::R0),
             TokenType::Reg(Register::R1) => Argument::Reg(Register::R1),
             TokenType::Reg(Register::R2) => Argument::Reg(Register::R2),

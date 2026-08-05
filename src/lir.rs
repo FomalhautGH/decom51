@@ -390,3 +390,8 @@ pub fn format_addr(addr: Addr) -> String {
         _ => format!("iData[0x{:02X}]", addr),
     }
 }
+
+// TODO: Check that the addresses are correct
+pub fn is_iram_addr(addr: Addr) -> bool {
+    (0x08..=0x7F).contains(&addr)
+}

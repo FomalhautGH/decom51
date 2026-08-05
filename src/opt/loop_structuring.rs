@@ -31,6 +31,8 @@ impl LoopStructuring {
             self.rename_edges(&mut block.successors, block.id);
         }
 
+        cfg.start_block = self.resolve_alias(cfg.start_block);
+
         if cfg!(debug_assertions) {
             println!("======================== LOOP STRUCTURING ========================");
             print!("{}", cfg);
