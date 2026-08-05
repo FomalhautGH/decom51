@@ -119,13 +119,18 @@ impl Operand {
 pub enum BinOp {
     Add,
     Sub,
+    Mul,
+    Div,
+    Mod,
+    And,
+    Or,
+    Xor,
     Eq,
     Lt,
     Gt,
     Le,
     Ge,
     Ne,
-    Or,
 }
 
 impl BinOp {
@@ -133,6 +138,12 @@ impl BinOp {
         match self {
             BinOp::Add => true,
             BinOp::Sub => true,
+            BinOp::Mul => true,
+            BinOp::Div => true,
+            BinOp::Mod => true,
+            BinOp::And => true,
+            BinOp::Or => true,
+            BinOp::Xor => true,
 
             BinOp::Eq => false,
             BinOp::Lt => false,
@@ -140,7 +151,6 @@ impl BinOp {
             BinOp::Le => false,
             BinOp::Ge => false,
             BinOp::Ne => false,
-            BinOp::Or => false,
         }
     }
 
@@ -151,6 +161,11 @@ impl BinOp {
 
             BinOp::Add => false,
             BinOp::Sub => false,
+            BinOp::Mul => false,
+            BinOp::Div => false,
+            BinOp::Mod => false,
+            BinOp::And => false,
+            BinOp::Xor => false,
             BinOp::Eq => false,
             BinOp::Gt => false,
             BinOp::Le => false,
@@ -326,13 +341,18 @@ impl Display for BinOp {
         match self {
             BinOp::Add => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+            BinOp::Mod => write!(f, "%"),
+            BinOp::And => write!(f, "&"),
+            BinOp::Or => write!(f, "|"),
+            BinOp::Xor => write!(f, "^"),
             BinOp::Eq => write!(f, "=="),
             BinOp::Lt => write!(f, "<"),
             BinOp::Gt => write!(f, ">"),
             BinOp::Le => write!(f, "<="),
             BinOp::Ge => write!(f, ">="),
             BinOp::Ne => write!(f, "!="),
-            BinOp::Or => write!(f, "|"),
         }
     }
 }

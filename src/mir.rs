@@ -18,13 +18,18 @@ pub enum Expr {
 
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
+    Mul(Box<Expr>, Box<Expr>),
+    Div(Box<Expr>, Box<Expr>),
+    Mod(Box<Expr>, Box<Expr>),
+    And(Box<Expr>, Box<Expr>),
+    Or(Box<Expr>, Box<Expr>),
+    Xor(Box<Expr>, Box<Expr>),
     Eq(Box<Expr>, Box<Expr>),
     Lt(Box<Expr>, Box<Expr>),
     Gt(Box<Expr>, Box<Expr>),
     Le(Box<Expr>, Box<Expr>),
     Ge(Box<Expr>, Box<Expr>),
     Ne(Box<Expr>, Box<Expr>),
-    Or(Box<Expr>, Box<Expr>),
 
     Deref(Box<Expr>),
     Concat(Vec<Expr>),
@@ -37,13 +42,18 @@ impl Expr {
 
             Expr::Add(lhs, rhs)
             | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Mod(lhs, rhs)
+            | Expr::And(lhs, rhs)
+            | Expr::Or(lhs, rhs)
+            | Expr::Xor(lhs, rhs)
             | Expr::Eq(lhs, rhs)
             | Expr::Lt(lhs, rhs)
             | Expr::Gt(lhs, rhs)
             | Expr::Le(lhs, rhs)
             | Expr::Ge(lhs, rhs)
-            | Expr::Ne(lhs, rhs)
-            | Expr::Or(lhs, rhs) => {
+            | Expr::Ne(lhs, rhs) => {
                 lhs.collect_dependencies(vars);
                 rhs.collect_dependencies(vars);
             }
@@ -173,13 +183,18 @@ impl Display for Expr {
             Expr::Temp(idx) => write!(f, "temp{}", idx),
             Expr::Add(lhs, rhs) => write!(f, "({} + {})", lhs, rhs),
             Expr::Sub(lhs, rhs) => write!(f, "({} - {})", lhs, rhs),
+            Expr::Mul(lhs, rhs) => write!(f, "({} * {})", lhs, rhs),
+            Expr::Div(lhs, rhs) => write!(f, "({} / {})", lhs, rhs),
+            Expr::Mod(lhs, rhs) => write!(f, "({} % {})", lhs, rhs),
+            Expr::And(lhs, rhs) => write!(f, "({} & {})", lhs, rhs),
+            Expr::Or(lhs, rhs) => write!(f, "({} | {})", lhs, rhs),
+            Expr::Xor(lhs, rhs) => write!(f, "({} ^ {})", lhs, rhs),
             Expr::Eq(lhs, rhs) => write!(f, "({} == {})", lhs, rhs),
             Expr::Lt(lhs, rhs) => write!(f, "({} < {})", lhs, rhs),
             Expr::Gt(lhs, rhs) => write!(f, "({} > {})", lhs, rhs),
             Expr::Le(lhs, rhs) => write!(f, "({} <= {})", lhs, rhs),
             Expr::Ge(lhs, rhs) => write!(f, "({} >= {})", lhs, rhs),
             Expr::Ne(lhs, rhs) => write!(f, "({} != {})", lhs, rhs),
-            Expr::Or(lhs, rhs) => write!(f, "({} | {})", lhs, rhs),
             Expr::Deref(expr) => write!(f, "*({})", expr),
             Expr::Concat(exprs) => {
                 write!(f, "concat(")?;

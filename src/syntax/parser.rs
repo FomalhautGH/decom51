@@ -20,8 +20,14 @@ pub enum Instruction {
     Clr(Argument),
     Add(Argument, Argument),
     Subb(Argument, Argument),
+    Anl(Argument, Argument),
+    Orl(Argument, Argument),
+    Xrl(Argument, Argument),
+    MulAb,
+    DivAb,
     Cjne(Argument, Argument, usize),
     Inc(Argument),
+    Dec(Argument),
 
     Lcall(usize),
     Jnc(usize),
@@ -60,6 +66,11 @@ impl<'a> Parser<'a> {
                 TokenType::Clr => self.clr(),
                 TokenType::Add => self.add(),
                 TokenType::Subb => self.subb(),
+                TokenType::Anl => self.anl(),
+                TokenType::Orl => self.orl(),
+                TokenType::Xrl => self.xrl(),
+                TokenType::Mul => self.mul_ab(),
+                TokenType::Div => self.div_ab(),
                 TokenType::Lcall
                 | TokenType::Ljmp
                 | TokenType::Jnc
@@ -67,6 +78,7 @@ impl<'a> Parser<'a> {
                 | TokenType::Jnz => self.jump(tok),
                 TokenType::Push | TokenType::Pop => self.pushpop(tok),
                 TokenType::Inc => self.inc(),
+                TokenType::Dec => self.dec(),
                 TokenType::Cjne => self.cjne(),
                 TokenType::Db(data) => Instruction::Db(data),
                 TokenType::Ret => Instruction::Ret,
@@ -98,6 +110,18 @@ impl<'a> Parser<'a> {
         };
 
         Instruction::Inc(op)
+    }
+
+    fn dec(&mut self) -> Instruction {
+        let reg = self.consume();
+
+        let op = match reg {
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            _ => unreachable!(),
+        };
+
+        Instruction::Dec(op)
     }
 
     fn pushpop(&mut self, current_tok: TokenType) -> Instruction {
@@ -172,6 +196,79 @@ impl<'a> Parser<'a> {
         Instruction::Subb(Argument::Reg(Register::A), op2)
     }
 
+    fn anl(&mut self) -> Instruction {
+        let op1 = self.consume();
+        let _comma = self.consume();
+        let op2 = self.consume();
+
+        let arg1 = match op1 {
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            _ => unreachable!(),
+        };
+
+        let arg2 = match op2 {
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            TokenType::Immediate(imm) => Argument::Data8(imm as u8),
+            _ => unreachable!(),
+        };
+
+        Instruction::Anl(arg1, arg2)
+    }
+
+    fn orl(&mut self) -> Instruction {
+        let op1 = self.consume();
+        let _comma = self.consume();
+        let op2 = self.consume();
+
+        let arg1 = match op1 {
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            _ => unreachable!(),
+        };
+
+        let arg2 = match op2 {
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            TokenType::Immediate(imm) => Argument::Data8(imm as u8),
+            _ => unreachable!(),
+        };
+
+        Instruction::Orl(arg1, arg2)
+    }
+
+    fn xrl(&mut self) -> Instruction {
+        let op1 = self.consume();
+        let _comma = self.consume();
+        let op2 = self.consume();
+
+        let arg1 = match op1 {
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            _ => unreachable!(),
+        };
+
+        let arg2 = match op2 {
+            TokenType::Reg(r) => Argument::Reg(r),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            TokenType::Immediate(imm) => Argument::Data8(imm as u8),
+            _ => unreachable!(),
+        };
+
+        Instruction::Xrl(arg1, arg2)
+    }
+
+    fn mul_ab(&mut self) -> Instruction {
+        let _op = self.consume();
+        Instruction::MulAb
+    }
+
+    fn div_ab(&mut self) -> Instruction {
+        let _op = self.consume();
+        Instruction::DivAb
+    }
+
     fn clr(&mut self) -> Instruction {
         let op = self.consume();
 
@@ -233,6 +330,7 @@ impl<'a> Parser<'a> {
         let op1 = match op1 {
             TokenType::Escargot => todo!(),
             TokenType::Reg(Register::A) => Argument::Reg(Register::A),
+            TokenType::Reg(Register::B) => Argument::Reg(Register::B),
             TokenType::Reg(Register::C) => todo!(),
             TokenType::Reg(Register::DPL) => Argument::Reg(Register::DPL),
             TokenType::Reg(Register::DPH) => Argument::Reg(Register::DPH),
@@ -255,6 +353,7 @@ impl<'a> Parser<'a> {
             TokenType::Reg(Register::DPL) => todo!(),
             TokenType::Reg(Register::DPH) => todo!(),
             TokenType::Reg(Register::A) => Argument::Reg(Register::A),
+            TokenType::Reg(Register::B) => Argument::Reg(Register::B),
             TokenType::Reg(Register::R0) => Argument::Reg(Register::R0),
             TokenType::Reg(Register::R1) => Argument::Reg(Register::R1),
             TokenType::Reg(Register::R2) => Argument::Reg(Register::R2),

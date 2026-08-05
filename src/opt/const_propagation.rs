@@ -352,21 +352,39 @@ impl ConstPropagation {
     }
 
     fn dest_to_binop_result(&mut self, op: BinOp, dest: &Operand, lhs: Constant, rhs: Constant) {
-        let result = match op {
+        let (result, shouldnt_set) = match op {
             BinOp::Lt => ((lhs < rhs) as u16, false),
             BinOp::Eq => ((lhs == rhs) as u16, false),
             BinOp::Add => lhs.overflowing_add(rhs),
             BinOp::Sub => lhs.overflowing_sub(rhs),
-            BinOp::Or => ((lhs != 0 || rhs != 0) as u16, false),
-            BinOp::Gt => todo!(),
-            BinOp::Le => todo!(),
-            BinOp::Ge => todo!(),
-            BinOp::Ne => todo!(),
-        }
-        .0 & 0xFF;
+            BinOp::Mul => lhs.overflowing_mul(rhs),
+            BinOp::Div => {
+                if let Some(result) = lhs.checked_div(rhs) {
+                    (result, false)
+                } else {
+                    (0, true)
+                }
+            }
+            BinOp::Mod => {
+                if let Some(result) = lhs.checked_rem(rhs) {
+                    (result, false)
+                } else {
+                    (0, true)
+                }
+            }
+            BinOp::And => (lhs & rhs, false),
+            BinOp::Or => (lhs | rhs, false),
+            BinOp::Xor => (lhs ^ rhs, false),
+            BinOp::Gt => ((lhs > rhs) as u16, false),
+            BinOp::Le => ((lhs <= rhs) as u16, false),
+            BinOp::Ge => ((lhs >= rhs) as u16, false),
+            BinOp::Ne => ((lhs != rhs) as u16, false),
+        };
 
-        // TODO: Don't mask result if dest register is 16bit
-        self.dest_to_state(dest, SSAState::Constant(result));
+        if !shouldnt_set {
+            // TODO: Don't mask result if dest register is 16bit
+            self.dest_to_state(dest, SSAState::Constant(result & 0xFF));
+        }
     }
 
     fn dest_to_state(&mut self, dest: &Operand, state: SSAState) {

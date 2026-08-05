@@ -219,9 +219,15 @@ impl Lifter {
             Instruction::Mov(dest, src) => self.mov(dest, src),
             Instruction::Clr(dest) => self.mov(dest, Argument::Data8(0)),
             Instruction::Inc(dest) => self.increment(dest),
+            Instruction::Dec(dest) => self.decrement(dest),
 
             Instruction::Add(dest, op) => self.add(dest, op),
             Instruction::Subb(dest, op) => self.subb(dest, op),
+            Instruction::Anl(dest, op) => self.anl(dest, op),
+            Instruction::Orl(dest, op) => self.orl(dest, op),
+            Instruction::Xrl(dest, op) => self.xrl(dest, op),
+            Instruction::MulAb => self.mul_ab(),
+            Instruction::DivAb => self.div_ab(),
             Instruction::Jnc(label) => self.jnc(label),
             Instruction::Jz(label) => self.jz(label),
             Instruction::Jnz(label) => self.jnz(label),
@@ -254,6 +260,72 @@ impl Lifter {
                 false_jmp,
             },
         ]
+    }
+
+    fn anl(&mut self, dest: Argument, op: Argument) -> Vec<Ir51> {
+        let dest_op: Operand = match dest {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            _ => todo!("{dest:?}"),
+        };
+
+        let src_op: Operand = match op {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::Data8(imm) => Operand::Constant(imm.into()),
+            _ => todo!("{op:?}"),
+        };
+
+        vec![Ir51::BinOp {
+            op: BinOp::And,
+            dest: dest_op,
+            lhs: dest_op,
+            rhs: src_op,
+        }]
+    }
+
+    fn orl(&mut self, dest: Argument, op: Argument) -> Vec<Ir51> {
+        let dest_op: Operand = match dest {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            _ => todo!("{dest:?}"),
+        };
+
+        let src_op: Operand = match op {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::Data8(imm) => Operand::Constant(imm.into()),
+            _ => todo!("{op:?}"),
+        };
+
+        vec![Ir51::BinOp {
+            op: BinOp::Or,
+            dest: dest_op,
+            lhs: dest_op,
+            rhs: src_op,
+        }]
+    }
+
+    fn xrl(&mut self, dest: Argument, op: Argument) -> Vec<Ir51> {
+        let dest_op: Operand = match dest {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            _ => todo!("{dest:?}"),
+        };
+
+        let src_op: Operand = match op {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::Data8(imm) => Operand::Constant(imm.into()),
+            _ => todo!("{op:?}"),
+        };
+
+        vec![Ir51::BinOp {
+            op: BinOp::Xor,
+            dest: dest_op,
+            lhs: dest_op,
+            rhs: src_op,
+        }]
     }
 
     fn jz(&mut self, label: usize) -> Vec<Ir51> {
@@ -294,6 +366,24 @@ impl Lifter {
         ]
     }
 
+    fn mul_ab(&mut self) -> Vec<Ir51> {
+        vec![Ir51::BinOp {
+            op: BinOp::Mul,
+            dest: Operand::Register(Register::A),
+            lhs: Operand::Register(Register::A),
+            rhs: Operand::Register(Register::B),
+        }]
+    }
+
+    fn div_ab(&mut self) -> Vec<Ir51> {
+        vec![Ir51::BinOp {
+            op: BinOp::Div,
+            dest: Operand::Register(Register::A),
+            lhs: Operand::Register(Register::A),
+            rhs: Operand::Register(Register::B),
+        }]
+    }
+
     fn push(&mut self, value: u8) -> Vec<Ir51> {
         Ir51::generate_push(Operand::Var(value.into(), AddrSpace::iData), 1)
     }
@@ -315,6 +405,21 @@ impl Lifter {
 
         vec![Ir51::BinOp {
             op: BinOp::Add,
+            dest,
+            lhs: dest,
+            rhs: Operand::Constant(1),
+        }]
+    }
+
+    fn decrement(&mut self, dest: Argument) -> Vec<Ir51> {
+        let dest: Operand = match dest {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            _ => todo!("{dest:?}"),
+        };
+
+        vec![Ir51::BinOp {
+            op: BinOp::Sub,
             dest,
             lhs: dest,
             rhs: Operand::Constant(1),

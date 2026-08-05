@@ -149,13 +149,18 @@ impl ExprAggregation {
         let src = match op {
             BinOp::Add => Expr::Add(lhs, rhs),
             BinOp::Sub => Expr::Sub(lhs, rhs),
+            BinOp::Mul => Expr::Mul(lhs, rhs),
+            BinOp::Div => Expr::Div(lhs, rhs),
+            BinOp::Mod => Expr::Mod(lhs, rhs),
+            BinOp::And => Expr::And(lhs, rhs),
+            BinOp::Or => Expr::Or(lhs, rhs),
+            BinOp::Xor => Expr::Xor(lhs, rhs),
             BinOp::Eq => Expr::Eq(lhs, rhs),
             BinOp::Lt => Expr::Lt(lhs, rhs),
             BinOp::Gt => Expr::Gt(lhs, rhs),
             BinOp::Le => Expr::Le(lhs, rhs),
             BinOp::Ge => Expr::Ge(lhs, rhs),
             BinOp::Ne => Expr::Ne(lhs, rhs),
-            BinOp::Or => Expr::Or(lhs, rhs),
         };
 
         let assignment = Mir51::Assign {
