@@ -147,8 +147,8 @@ impl ExprAggregation {
         let lhs = Box::new(self.resolve_operand(lhs)?);
         let rhs = Box::new(self.resolve_operand(rhs)?);
         let src = match op {
-            BinOp::Add => Expr::Add(lhs, rhs),
-            BinOp::Sub => Expr::Sub(lhs, rhs),
+            BinOp::Add | BinOp::Addc => Expr::Add(lhs, rhs),
+            BinOp::Sub | BinOp::Subb => Expr::Sub(lhs, rhs),
             BinOp::Mul => Expr::Mul(lhs, rhs),
             BinOp::Div => Expr::Div(lhs, rhs),
             BinOp::Mod => Expr::Mod(lhs, rhs),

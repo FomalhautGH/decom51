@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 pub mod codegen;
 pub mod common;
 pub mod hir;

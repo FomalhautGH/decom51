@@ -36,6 +36,9 @@ impl Optimizer {
         let mut dbe = DeadBlockElimination::default();
         dbe.execute(&mut cfg);
 
+        let mut vwa = VariableWidthAggregation::default();
+        vwa.execute(&mut cfg);
+
         SSABuilder::build(&mut cfg);
 
         let mut const_prop = ConstPropagation::default();
@@ -57,9 +60,6 @@ impl Optimizer {
 
         let mut dbe = DeadBlockElimination::default();
         dbe.execute(&mut cfg);
-
-        let mut vwa = VariableWidthAggregation::default();
-        vwa.execute(&mut cfg);
 
         let mut expragr = ExprAggregation::default();
         expragr.execute(&mut cfg);

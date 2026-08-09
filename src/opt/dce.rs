@@ -142,11 +142,9 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Register(_)
-            | Operand::Temp(_)
-            | Operand::Var(_, _)
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => unreachable!(),
+            Operand::Register(_) | Operand::Temp(_) | Operand::Var(_, _, _) | Operand::Local(_) => {
+                unreachable!()
+            }
         }
     }
 
@@ -225,12 +223,11 @@ impl DeadCodeElimination {
                 }
             }
 
-            Operand::Var(_, _)
+            Operand::Var(_, _, _)
             | Operand::Constant(_)
             | Operand::Temp(_)
             | Operand::Register(_)
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => {
+            | Operand::Local(_) => {
                 unreachable!("{dest:?}")
             }
         };
@@ -315,11 +312,9 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Var(_, _)
-            | Operand::Register(_)
-            | Operand::Temp(_)
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => unreachable!(),
+            Operand::Var(_, _, _) | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
+                unreachable!()
+            }
         }
     }
 
@@ -340,11 +335,9 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Register(_)
-            | Operand::Temp(_)
-            | Operand::Var(_, _)
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => unreachable!(),
+            Operand::Register(_) | Operand::Temp(_) | Operand::Var(_, _, _) | Operand::Local(_) => {
+                unreachable!()
+            }
         }
     }
 }

@@ -1,124 +1,46 @@
-use std::{
-    cmp,
-    collections::{HashMap, HashSet},
+use crate::{
+    common::{Addr, AddrSpace, BinOp, Constant, Ir51, Operand, TempIndex},
+    opt::cfg::{BasicBlock, ControlFlowGraph},
 };
 
-use crate::{
-    common::{AddrSpace, BinOp, BlockId, Constant, Ir51, Operand, Register, TempIndex, VarId},
-    opt::{
-        cfg::{BasicBlock, ControlFlowGraph},
-        ssa::{CHKAlgorithm, Dominators},
-    },
-};
+#[derive(Debug, Clone)]
+struct FusedOperation {
+    start_idx: usize,
+    end_idx: usize,
+    op: BinOp,
+    dest: Operand,
+    lhs: Operand,
+    rhs: Operand,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+// TODO: We probably need to have a size in classic as well
 pub enum TrackedValue {
-    Classic(VarId),
-    Fused(VarId, VarId),
+    Classic(Addr),
     Temporary(TempIndex),
     Constant(Constant),
 }
 
-const BITS: usize = 8;
-
 impl TrackedValue {
     pub fn from_operand(op: &Operand) -> Option<Self> {
         match op {
-            Operand::Local(id) => Some(Self::Classic(*id)),
+            Operand::Var(addr, _, _) => Some(Self::Classic(*addr)),
+            Operand::Local(id) => Some(Self::Classic(*id as Addr)),
             Operand::Temp(id) => Some(Self::Temporary(*id)),
             Operand::Constant(value) => Some(Self::Constant(*value)),
-            Operand::Concat(v1, v2) => Some(Self::Fused(*v1, *v2)),
 
-            Operand::Register(_)
-            | Operand::TempSSAVar { .. }
-            | Operand::SSAVar { .. }
-            | Operand::Var(_, _) => None,
+            Operand::Register(_) | Operand::TempSSAVar { .. } | Operand::SSAVar { .. } => None,
         }
-    }
-
-    pub fn into_operand(self) -> Operand {
-        match self {
-            Self::Classic(id) => Operand::Local(id),
-            Self::Temporary(idx) => Operand::Temp(idx),
-            Self::Constant(val) => Operand::Constant(val),
-            Self::Fused(v1, v2) => Operand::Concat(v1, v2),
-        }
-    }
-
-    pub fn fuse_with(self, rhs: Self) -> Operand {
-        match (self, rhs) {
-            (Self::Classic(low), Self::Classic(high)) => Operand::Concat(low, high),
-            (Self::Constant(low), Self::Constant(high)) => Operand::Constant(low | high << BITS),
-
-            _ => todo!(),
-        }
-    }
-}
-
-// This struct represents the high and low part
-// of the lhs and rhs of a binary operation
-#[derive(Default, Debug)]
-struct AluPatternTracker {
-    lhs_high: Option<TrackedValue>,
-    lhs_low: Option<TrackedValue>,
-    rhs_high: Option<TrackedValue>,
-    rhs_low: Option<TrackedValue>,
-
-    start_index: usize,
-    end_index: usize,
-
-    dest: Option<TrackedValue>,
-    binop: Option<BinOp>,
-}
-
-impl AluPatternTracker {
-    pub fn record_byte_pair(&mut self, left: TrackedValue, right: TrackedValue) {
-        if self.lhs_high.is_none() && self.rhs_high.is_none() {
-            self.lhs_high = Some(left);
-            self.rhs_high = Some(right);
-        } else {
-            self.lhs_low = Some(left);
-            self.rhs_low = Some(right);
-        }
-    }
-
-    pub fn propagate_alias(&mut self, from: TrackedValue, to: TrackedValue) {
-        for field in [
-            &mut self.lhs_high,
-            &mut self.lhs_low,
-            &mut self.rhs_high,
-            &mut self.rhs_low,
-        ] {
-            if *field == Some(from) {
-                *field = Some(to);
-            }
-        }
-    }
-
-    pub fn contains(&self, var: TrackedValue) -> bool {
-        [self.lhs_high, self.lhs_low, self.rhs_high, self.rhs_low].contains(&Some(var))
-    }
-
-    pub fn is_fully_resolved(&self) -> bool {
-        [self.lhs_high, self.lhs_low, self.rhs_high, self.rhs_low]
-            .iter()
-            .all(|field| field.is_some())
-            && self.binop.is_some()
     }
 }
 
 #[derive(Default)]
-pub struct VariableWidthAggregation {
-    max_local_id: usize,
-    definitions: HashMap<Operand, (BlockId, usize)>,
-    concats: HashMap<Operand, usize>, // Concat to its local varid aggregate
-}
+pub struct VariableWidthAggregation;
 
 // TODO: this phase probably needs to be more general
 impl VariableWidthAggregation {
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         self.concatenate_variables(cfg);
-        self.merge_variables(cfg);
 
         if cfg!(debug_assertions) {
             println!("======================== VAR WIDTH AGGREGATION ========================");
@@ -130,199 +52,6 @@ impl VariableWidthAggregation {
         }
     }
 
-    fn merge_variables(&mut self, cfg: &mut ControlFlowGraph) {
-        self.max_local_id = 0;
-        self.definitions.clear();
-        self.concats.clear();
-
-        // Finds where all the variables are defined
-        for block in cfg.blocks.values() {
-            self.find_definitions(block);
-        }
-
-        for block in cfg.blocks.values_mut() {
-            self.replace_concats(block);
-        }
-
-        self.merge(cfg);
-
-        println!("{:?}", self.definitions);
-        println!("{:?}", self.concats);
-        println!("{:?}", self.max_local_id);
-    }
-
-    // TODO: find every plase an assert could be useful
-    fn merge(&mut self, cfg: &mut ControlFlowGraph) {
-        let merge_items = self.find_where_to_merge();
-        Self::merge_all(merge_items, cfg);
-    }
-
-    fn merge_all(
-        mut merge_items: Vec<(BlockId, usize, usize, usize, usize)>,
-        cfg: &mut ControlFlowGraph,
-    ) {
-        merge_items.sort_by_key(|a| a.1);
-
-        for (blockv1, line, idxv1, idxv2, new_id) in merge_items {
-            let block = cfg.blocks.get_mut(&blockv1).unwrap();
-            let src = Self::merge_sources(&block.irs[idxv1], &block.irs[idxv2]).unwrap();
-
-            let declaration = Ir51::Move {
-                dest: Operand::Local(new_id),
-                src,
-            };
-
-            let mut index = 0;
-            block.irs.retain(|_| {
-                let keep = index != idxv1 && index != idxv2;
-                index += 1;
-                keep
-            });
-
-            block.irs.insert(line, declaration);
-        }
-    }
-
-    fn find_where_to_merge(&self) -> Vec<(BlockId, usize, usize, usize, usize)> {
-        let mut merge_items = Vec::new();
-
-        for (conc, new_id) in &self.concats {
-            if let Operand::Concat(v1, v2) = conc {
-                let v1 = Operand::Local(*v1);
-                let v2 = Operand::Local(*v2);
-
-                let (posv1, posv2) = (
-                    self.definitions.get(&v1).unwrap(),
-                    self.definitions.get(&v2).unwrap(),
-                );
-
-                let (blockv1, blockv2) = (posv1.0, posv2.0);
-                let (idxv1, idxv2) = (posv1.1, posv2.1);
-                assert!(blockv1 == blockv2);
-
-                let line = cmp::min(idxv1, idxv2);
-                merge_items.push((blockv1, line, idxv1, idxv2, *new_id));
-            }
-        }
-
-        merge_items
-    }
-
-    fn merge_sources(ir1: &Ir51, ir2: &Ir51) -> Option<Operand> {
-        let Ir51::Move { src: src1, .. } = ir1 else {
-            return None;
-        };
-
-        let Ir51::Move { src: src2, .. } = ir2 else {
-            return None;
-        };
-
-        match (src1, src2) {
-            (Operand::Constant(c1), Operand::Constant(c2)) => {
-                Some(Operand::Constant(*c2 << BITS | *c1))
-            }
-            _ => todo!(),
-        }
-    }
-
-    fn replace_concats(&mut self, block: &mut BasicBlock) {
-        for ir in block.irs.iter_mut() {
-            match ir {
-                Ir51::Move { dest, src } => {
-                    self.check_concat(src);
-                    self.check_concat(dest);
-                }
-
-                Ir51::BinOp { dest, lhs, rhs, .. } => {
-                    self.check_concat(lhs);
-                    self.check_concat(rhs);
-                    self.check_concat(dest);
-                }
-
-                Ir51::Store {
-                    dest_ptr, value, ..
-                } => {
-                    self.check_concat(dest_ptr);
-                    self.check_concat(value);
-                }
-
-                Ir51::Load { dest, src_ptr, .. } => {
-                    self.check_concat(src_ptr);
-                    self.check_concat(dest);
-                }
-
-                Ir51::BranchIf { cond, .. } => self.check_concat(cond),
-                Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
-            };
-        }
-    }
-
-    fn check_concat(&mut self, op: &mut Operand) {
-        if let Operand::Concat(v1, v2) = op {
-            let v1 = Operand::Local(*v1);
-            let v2 = Operand::Local(*v2);
-
-            if self.definitions.contains_key(&v1) && self.definitions.contains_key(&v2) {
-                let new_id = if let Some(id) = self.concats.get(op) {
-                    *id
-                } else {
-                    self.max_local_id += 1;
-                    self.concats.insert(*op, self.max_local_id);
-                    self.max_local_id
-                };
-
-                *op = Operand::Local(new_id);
-            }
-        }
-    }
-
-    // We find declarations of local variables that are never used alone
-    // in another operation
-    fn find_definitions(&mut self, block: &BasicBlock) {
-        for (i, ir) in block.irs.iter().enumerate() {
-            match ir {
-                Ir51::Move { dest, src } => {
-                    self.usage(src);
-                    self.definition(dest, block.id, i);
-                }
-
-                Ir51::BinOp { dest, lhs, rhs, .. } => {
-                    self.usage(lhs);
-                    self.usage(rhs);
-                    self.definition(dest, block.id, i);
-                }
-
-                Ir51::Store {
-                    dest_ptr, value, ..
-                } => {
-                    self.usage(dest_ptr);
-                    self.usage(value);
-                }
-
-                Ir51::Load { dest, src_ptr, .. } => {
-                    self.usage(src_ptr);
-                    self.definition(dest, block.id, i);
-                }
-
-                Ir51::BranchIf { cond, .. } => self.usage(cond),
-                Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
-            };
-        }
-    }
-
-    fn definition(&mut self, op: &Operand, blockid: BlockId, index: usize) {
-        if let Operand::Local(id) = op {
-            self.max_local_id = cmp::max(*id, self.max_local_id);
-            self.definitions.insert(*op, (blockid, index));
-        }
-    }
-
-    fn usage(&mut self, op: &Operand) {
-        if let Operand::Local(_) = op {
-            self.definitions.remove(op);
-        }
-    }
-
     fn concatenate_variables(&mut self, cfg: &mut ControlFlowGraph) {
         let mut modified = true;
         while modified {
@@ -331,394 +60,134 @@ impl VariableWidthAggregation {
             for block in cfg.blocks.values_mut() {
                 modified |= self.aggregate_intra_block(block);
             }
-
-            let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
-            let immediate_dominators = CHKAlgorithm::execute(&shared_blocks);
-            modified |= self.fuse_loop_increments(cfg, &immediate_dominators);
         }
     }
 
     fn aggregate_intra_block(&mut self, block: &mut BasicBlock) -> bool {
-        let mut defs: HashSet<TrackedValue> = HashSet::new();
+        if let Some(fusedop) = Self::search_nbit_operation(&block.irs) {
+            let with = vec![Ir51::BinOp {
+                op: fusedop.op,
+                dest: fusedop.dest,
+                lhs: fusedop.lhs,
+                rhs: fusedop.rhs,
+            }];
 
-        let mut tracker = AluPatternTracker::default();
-        let mut track_mode = false;
-
-        let mut stack_mode = None;
-        let pop = Ir51::BinOp {
-            op: BinOp::Sub,
-            dest: Operand::Register(Register::SP),
-            lhs: Operand::Register(Register::SP),
-            rhs: Operand::Constant(1),
-        };
-
-        for (i, ir) in block.irs.iter_mut().enumerate().rev() {
-            if track_mode {
-                Self::trace_dependency(ir, i, &mut tracker, &mut defs);
-            } else {
-                match ir {
-                    Ir51::BinOp { op, dest, lhs, rhs } if op.is_glue_op() => {
-                        if let Some(dest) = TrackedValue::from_operand(dest)
-                            && let Some(lhs) = TrackedValue::from_operand(lhs)
-                            && let Some(rhs) = TrackedValue::from_operand(rhs)
-                        {
-                            track_mode = true;
-
-                            tracker.dest = Some(dest);
-                            tracker.end_index = i;
-
-                            defs.insert(lhs);
-                            defs.insert(rhs);
-                        }
-                    }
-
-                    _ if *ir == pop => {
-                        stack_mode = Some(i);
-                        break;
-                    }
-
-                    _ => {}
-                }
-            }
-        }
-
-        if let Some(idx) = stack_mode {
-            return Self::trace_stack(&mut block.irs, idx);
-        } else if tracker.is_fully_resolved() && defs.is_empty() {
-            Self::rewrite_with_fused_op(block, &tracker);
-            return true;
-        }
-
-        false
-    }
-
-    fn trace_stack(ir: &mut Vec<Ir51>, from: usize) -> bool {
-        let mut popped_vars = Vec::new();
-        let mut curr = from;
-
-        // Trace backward to find the sequence of POP instructions
-        while curr > 0 {
-            if let Some((var, next_i)) = Self::parse_pop_step(ir, curr) {
-                popped_vars.push(var);
-                if next_i == 0 {
-                    curr = 0;
-                    break;
-                }
-                curr = next_i - 1;
-            } else {
-                break;
-            }
-        }
-
-        let num_vars = popped_vars.len();
-        if num_vars == 0 {
-            return false;
-        }
-
-        // Search for a matching PUSH sequence earlier in the block
-        let mut pushed_vars = Vec::new();
-        let mut push_start = None;
-        let mut j = 0;
-
-        while j < curr {
-            if let Some((var, next_j)) = Self::parse_push_step(ir, j) {
-                if push_start.is_none() {
-                    push_start = Some(j);
-                }
-                pushed_vars.push(var);
-                j = next_j;
-                if pushed_vars.len() == num_vars {
-                    break;
-                }
-            } else {
-                if !pushed_vars.is_empty() {
-                    pushed_vars.clear();
-                    push_start = None;
-                }
-                j += 1;
-            }
-        }
-
-        if pushed_vars.len() == num_vars
-            && pushed_vars == popped_vars
-            && let Some(start) = push_start
-            && let [high_part, low_part] = pushed_vars.as_slice()
-            && let Some(low_var) = low_part.to_local_id()
-            && let Some(high_var) = high_part.to_local_id()
-        {
-            let src = Operand::Concat(low_var, high_var);
-            ir.splice(curr + 1..=from, Ir51::generate_pop(src, 2));
-            ir.splice(start..j, Ir51::generate_push(src, 2));
-            return true;
-        }
-
-        false
-    }
-
-    // Parse POP instruction
-    fn parse_pop_step(irs: &[Ir51], from_where: usize) -> Option<(Operand, usize)> {
-        if from_where < 1 {
-            return None;
-        }
-
-        let dec = &irs[from_where];
-        let load = &irs[from_where - 1];
-
-        if dec.is_sp_decrement()
-            && let Some(dest) = load.as_stack_load()
-        {
-            Some((*dest, from_where - 1))
+            // TODO: we shouldn't use splice if there are other instruction in between start idx and
+            // end idx but its fine for now
+            block.irs.splice(fusedop.start_idx..=fusedop.end_idx, with);
+            true
         } else {
-            None
+            false
         }
     }
 
-    // Parse PUSH instruction
-    fn parse_push_step(irs: &[Ir51], from_where: usize) -> Option<(Operand, usize)> {
-        if from_where + 2 >= irs.len() {
-            return None;
-        }
+    fn search_nbit_operation(irs: &[Ir51]) -> Option<FusedOperation> {
+        for (i, ir) in irs.iter().enumerate() {
+            if let Ir51::BinOp { op, .. } = ir {
+                let fuse_result = match op {
+                    BinOp::Addc => Self::try_fusing_addc(irs, i),
+                    BinOp::Subb => todo!(),
 
-        let inc = &irs[from_where];
-        let load = &irs[from_where + 1];
-        let store = &irs[from_where + 2];
+                    BinOp::Or => todo!(),
+                    BinOp::And => todo!(),
+                    BinOp::Xor => todo!(),
 
-        if inc.is_sp_increment()
-            && let Ir51::Load {
-                dest: temp_load,
-                src_ptr,
-                space: AddrSpace::iData,
-            } = load
-            && let Some(temp_store) = store.as_stack_store()
-            && temp_load == temp_store
-        {
-            Some((*src_ptr, from_where + 3))
-        } else {
-            None
-        }
-    }
+                    _ => None,
+                };
 
-    fn rewrite_with_fused_op(block: &mut BasicBlock, tracker: &AluPatternTracker) {
-        let from = tracker.start_index;
-        let to = tracker.end_index + 1;
-
-        let lhs = tracker
-            .lhs_low
-            .unwrap()
-            .fuse_with(tracker.lhs_high.unwrap());
-
-        let rhs = tracker
-            .rhs_low
-            .unwrap()
-            .fuse_with(tracker.rhs_high.unwrap());
-
-        let dest = tracker.dest.unwrap().into_operand();
-        let with = vec![Ir51::BinOp {
-            op: tracker.binop.unwrap(),
-            dest,
-            lhs,
-            rhs,
-        }];
-
-        block.irs.splice(from..to, with);
-    }
-
-    fn trace_dependency(
-        ir: &Ir51,
-        i: usize,
-        tracker: &mut AluPatternTracker,
-        defs: &mut HashSet<TrackedValue>,
-    ) {
-        match ir {
-            Ir51::Move { dest, src } => {
-                if let Some(dest) = TrackedValue::from_operand(dest)
-                    && let Some(src) = TrackedValue::from_operand(src)
-                {
-                    tracker.propagate_alias(dest, src);
-                    tracker.start_index = i;
+                if fuse_result.is_some() {
+                    return fuse_result;
                 }
-            }
-
-            Ir51::BinOp { op, dest, lhs, rhs } if op.is_glue_op() => {
-                if let Some(dest) = TrackedValue::from_operand(dest)
-                    && let Some(lhs) = TrackedValue::from_operand(lhs)
-                    && let Some(rhs) = TrackedValue::from_operand(rhs)
-                {
-                    if !defs.remove(&dest) {
-                        return;
-                    }
-
-                    tracker.binop = Some(*op);
-                    tracker.start_index = i;
-                    if !tracker.contains(lhs) {
-                        defs.insert(lhs);
-                    };
-                    if !tracker.contains(rhs) {
-                        defs.insert(rhs);
-                    };
-                }
-            }
-
-            Ir51::BinOp { op, dest, lhs, rhs } if op.is_math_op() => {
-                if let Some(dest) = TrackedValue::from_operand(dest)
-                    && let Some(lhs) = TrackedValue::from_operand(lhs)
-                    && let Some(rhs) = TrackedValue::from_operand(rhs)
-                {
-                    if !defs.remove(&dest) {
-                        return;
-                    }
-
-                    tracker.start_index = i;
-                    tracker.record_byte_pair(lhs, rhs);
-                }
-            }
-
-            _ => {}
-        }
-    }
-
-    // TODO: i just need to analyze triangles (probably yes just for while loops)?
-    fn fuse_loop_increments(&mut self, cfg: &mut ControlFlowGraph, idoms: &Dominators) -> bool {
-        let Some((head, branch, tail)) = Self::find_triangle(cfg, idoms) else {
-            return false;
-        };
-
-        Self::analyze_triangle(head, branch, tail, cfg).is_some()
-    }
-
-    fn analyze_triangle(
-        head: BlockId,
-        branch: BlockId,
-        tail: BlockId,
-        cfg: &mut ControlFlowGraph,
-    ) -> Option<()> {
-        let (high_part, binop) = Self::analyze_branch(branch, cfg)?;
-
-        let Ir51::BinOp { op, .. } = binop else {
-            return None;
-        };
-        let (low_part, indices) = Self::analyze_head(head, cfg, op)?;
-
-        let head_block = cfg.blocks.get_mut(&head).unwrap();
-
-        let mut index = 0;
-        head_block.irs.retain(|_| {
-            let keep = !indices.contains(&index);
-            index += 1;
-            keep
-        });
-
-        let low = TrackedValue::from_operand(&low_part)?;
-        let high = TrackedValue::from_operand(&high_part)?;
-
-        let Ir51::BinOp { op, rhs, .. } = binop else {
-            return None;
-        };
-
-        let var = low.fuse_with(high);
-        head_block.irs.push(Ir51::BinOp {
-            op,
-            dest: var,
-            lhs: var,
-            rhs,
-        });
-        head_block.irs.push(Ir51::Jump(tail));
-        head_block.successors.retain(|s| *s != branch);
-
-        let tail_block = cfg.blocks.get_mut(&tail).unwrap();
-        tail_block.predecessors.retain(|p| *p != branch);
-
-        cfg.blocks.remove(&branch);
-        Some(())
-    }
-
-    fn find_triangle(
-        cfg: &ControlFlowGraph,
-        idoms: &Dominators,
-    ) -> Option<(BlockId, BlockId, BlockId)> {
-        for block in cfg.blocks.values() {
-            let [suc1, suc2] = block.successors.as_slice() else {
-                continue;
-            };
-
-            let Some(branch_blockid) = [suc1, suc2]
-                .into_iter()
-                .find(|s| matches!(idoms.get(s), Some(idom) if *idom == block.id))
-            else {
-                continue;
-            };
-
-            let branch_block = &cfg.blocks[branch_blockid];
-            let [branch_suc] = branch_block.successors.as_slice() else {
-                continue;
-            };
-
-            if branch_suc != branch_blockid && (branch_suc == suc1 || branch_suc == suc2) {
-                return Some((block.id, *branch_blockid, *branch_suc));
             }
         }
 
         None
     }
 
-    fn analyze_head(
-        headid: BlockId,
-        cfg: &ControlFlowGraph,
-        binop: BinOp,
-    ) -> Option<(Operand, Vec<usize>)> {
-        let head = &cfg.blocks[&headid];
-        let mut indices = Vec::new();
-
-        let lastir = head.irs.last()?;
-        let Ir51::BranchIf { cond, .. } = *lastir else {
-            return None;
+    fn try_fusing_addc(irs: &[Ir51], addc_index: usize) -> Option<FusedOperation> {
+        let Ir51::BinOp {
+            op: BinOp::Addc,
+            dest,
+            lhs,
+            rhs,
+        } = irs[addc_index]
+        else {
+            unreachable!()
         };
 
-        indices.push(head.irs.len() - 1);
-        let mut low_part: Option<Operand> = None;
+        let _ = rhs.to_var_addr()?;
+        let (lhs_high, _) = Self::find_last_initialization(&lhs, irs, addc_index)?;
+        let (dest_high, end_idx) = Self::find_next_usage(&dest, irs, addc_index)?;
+        let (_, _) = (lhs_high.to_var_addr()?, dest_high.to_var_addr()?);
 
-        for (i, ir) in head.irs.iter().enumerate().rev().skip(1) {
+        let add_index = Self::find_last_add(irs, addc_index)?;
+        let Ir51::BinOp {
+            op: BinOp::Add,
+            dest,
+            lhs,
+            rhs,
+        } = irs[add_index]
+        else {
+            unreachable!()
+        };
+
+        let rhs_low = rhs.to_var_addr()?;
+        let (lhs_low, start_idx) = Self::find_last_initialization(&lhs, irs, add_index)?;
+        let (dest_low, _) = Self::find_next_usage(&dest, irs, add_index)?;
+        let (lhs_low, dest_low) = (lhs_low.to_var_addr()?, dest_low.to_var_addr()?);
+
+        let op = BinOp::Add;
+        let lhs = Operand::Var(lhs_low, AddrSpace::iData, 2);
+        let rhs = Operand::Var(rhs_low, AddrSpace::iData, 2);
+        let dest = Operand::Var(dest_low, AddrSpace::iData, 2);
+
+        Some(FusedOperation {
+            start_idx,
+            end_idx,
+            op,
+            dest,
+            lhs,
+            rhs,
+        })
+    }
+
+    pub fn find_last_add(irs: &[Ir51], from: usize) -> Option<usize> {
+        for (i, ir) in irs.iter().enumerate().take(from).rev() {
+            if let Ir51::BinOp { op: BinOp::Add, .. } = ir {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    // Finds the next instruciton that used the forop Operand for an assignent and returns the
+    // destination and the index of the instruction in was found into
+    pub fn find_next_usage(forop: &Operand, irs: &[Ir51], from: usize) -> Option<(Operand, usize)> {
+        for (i, ir) in irs.iter().enumerate().skip(from) {
             match ir {
-                Ir51::BinOp { op, dest, lhs, rhs } if *dest == cond => {
-                    indices.push(i);
-                    low_part = Some(*lhs);
-                }
-
-                Ir51::BinOp { op, dest, lhs, rhs }
-                    if *op == binop && low_part == Some(*dest) && low_part == Some(*lhs) =>
-                {
-                    indices.push(i);
-                    low_part = Some(*dest);
-                }
-
+                Ir51::Move { dest, src } if src == forop => return Some((*dest, i)),
                 _ => {}
             }
         }
 
-        let low_part = low_part?;
-        Some((low_part, indices))
+        None
     }
 
-    // TODO: maybe use a function that checks whether or not 2 instruction "correspond"
-    // to the same calculation but on the high and low part
-
-    // Analyzes the branch block and returns the variable representing the high byte
-    fn analyze_branch(branchid: BlockId, cfg: &ControlFlowGraph) -> Option<(Operand, Ir51)> {
-        let branch_block = &cfg.blocks[&branchid];
-
-        let [op, jmp] = &branch_block.irs.as_slice() else {
-            return None;
-        };
-
-        if let Ir51::BinOp {
-            op: binop, dest, ..
-        } = op
-            && binop.is_math_op()
-            && matches!(jmp, Ir51::Jump(_))
-        {
-            Some((*dest, *op))
-        } else {
-            None
+    // Finds the last instruction that assigned to the forop argument and returns the source and the
+    // index of the instruction it was found into
+    pub fn find_last_initialization(
+        forop: &Operand,
+        irs: &[Ir51],
+        from: usize,
+    ) -> Option<(Operand, usize)> {
+        for (i, ir) in irs.iter().enumerate().take(from).rev() {
+            match ir {
+                Ir51::Move { dest, src } if dest == forop => return Some((*src, i)),
+                _ => {}
+            }
         }
+
+        None
     }
 }

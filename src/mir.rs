@@ -101,9 +101,8 @@ impl TryFrom<Operand> for Expr {
             Operand::Register(register) => Ok(Self::Register(register)),
             Operand::Local(id) => Ok(Self::Var(id)),
             Operand::Temp(idx) => Ok(Self::Temp(idx)),
-            Operand::Concat(id1, id2) => Ok(Self::Concat(vec![Self::Var(id1), Self::Var(id2)])),
 
-            Operand::TempSSAVar { .. } | Operand::Var(_, _) | Operand::SSAVar { .. } => {
+            Operand::TempSSAVar { .. } | Operand::Var(_, _, _) | Operand::SSAVar { .. } => {
                 Err("Illegal operand for Expr".to_string())
             }
         }

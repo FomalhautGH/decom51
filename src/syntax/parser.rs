@@ -19,6 +19,7 @@ pub enum Instruction {
     Mov(Argument, Argument),
     Clr(Argument),
     Add(Argument, Argument),
+    Addc(Argument, Argument),
     Subb(Argument, Argument),
     Anl(Argument, Argument),
     Orl(Argument, Argument),
@@ -65,6 +66,7 @@ impl<'a> Parser<'a> {
                 TokenType::Label(labnum) => self.label(labnum),
                 TokenType::Clr => self.clr(),
                 TokenType::Add => self.add(),
+                TokenType::Addc => self.addc(),
                 TokenType::Subb => self.subb(),
                 TokenType::Anl => self.anl(),
                 TokenType::Orl => self.orl(),
@@ -170,6 +172,23 @@ impl<'a> Parser<'a> {
         };
 
         Instruction::Add(Argument::Reg(Register::A), op2)
+    }
+
+    fn addc(&mut self) -> Instruction {
+        let op1 = self.consume();
+        assert!(op1 == TokenType::Reg(Register::A));
+
+        let _comma = self.consume();
+
+        let op2 = self.consume();
+        let op2 = match op2 {
+            TokenType::Reg(reg) => Argument::Reg(reg),
+            TokenType::Address(addr) => Argument::IramAddress(addr),
+            TokenType::Immediate(imm) => Argument::Data8(imm as u8),
+            _ => unreachable!(),
+        };
+
+        Instruction::Addc(Argument::Reg(Register::A), op2)
     }
 
     fn subb(&mut self) -> Instruction {

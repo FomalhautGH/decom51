@@ -173,7 +173,7 @@ impl SSABuilder {
                 .phis;
 
             for phi in phis.iter_mut() {
-                let (Operand::Var(addr, _) | Operand::SSAVar { addr, .. }) = phi.operand else {
+                let (Operand::Var(addr, _, _) | Operand::SSAVar { addr, .. }) = phi.operand else {
                     unreachable!()
                 };
 
@@ -293,7 +293,7 @@ impl SSABuilder {
     // version to read
     fn read_op(op: &Operand, stack: &VersionStack) -> Operand {
         match op {
-            Operand::Var(addr, AddrSpace::iData) => {
+            Operand::Var(addr, AddrSpace::iData, _) => {
                 let key = VarKey::Mem(*addr);
                 let version = Self::get_stack_top_for(stack, key);
 
@@ -313,14 +313,13 @@ impl SSABuilder {
                 }
             }
 
-            Operand::Var(_, _) => todo!(),
+            Operand::Var(_, _, _) => todo!(),
 
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => *op,
+            | Operand::Local(_) => *op,
         }
     }
 
@@ -345,7 +344,7 @@ impl SSABuilder {
         };
 
         match op {
-            Operand::Var(addr, AddrSpace::iData) => {
+            Operand::Var(addr, AddrSpace::iData, _) => {
                 let key = VarKey::Mem(*addr);
                 let version = update(key);
 
@@ -364,14 +363,13 @@ impl SSABuilder {
                 }
             }
 
-            Operand::Var(_, _) => todo!(),
+            Operand::Var(_, _, _) => todo!(),
 
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => *op,
+            | Operand::Local(_) => *op,
         }
     }
 
@@ -412,13 +410,13 @@ impl SSABuilder {
 
                     // TODO: Dont hardcode iData cuz variables could be from different RAMs
                     if frontier_block.phis.iter().any(|e| {
-                        matches!(e, Phi { operand: Operand::Var(v, AddrSpace::iData), .. } if *v == *var)
+                        matches!(e, Phi { operand: Operand::Var(v, AddrSpace::iData, _), .. } if *v == *var)
                     }) {
                         continue;
                     }
 
                     frontier_block.phis.push(Phi {
-                        operand: Operand::Var(*var, AddrSpace::iData),
+                        operand: Operand::Var(*var, AddrSpace::iData, 1),
                         incoming: HashMap::new(),
                     });
 
@@ -442,19 +440,19 @@ impl SSABuilder {
                 match *ir {
                     // Addresses
                     Ir51::Move {
-                        dest: Operand::Var(addr, _),
+                        dest: Operand::Var(addr, _, _),
                         ..
                     }
                     | Ir51::BinOp {
-                        dest: Operand::Var(addr, _),
+                        dest: Operand::Var(addr, _, _),
                         ..
                     }
                     | Ir51::Load {
-                        dest: Operand::Var(addr, _),
+                        dest: Operand::Var(addr, _, _),
                         ..
                     }
                     | Ir51::BranchIf {
-                        cond: Operand::Var(addr, _),
+                        cond: Operand::Var(addr, _, _),
                         ..
                     } => insert_var(VarKey::Mem(addr)),
 

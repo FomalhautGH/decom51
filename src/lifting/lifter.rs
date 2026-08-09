@@ -222,6 +222,7 @@ impl Lifter {
             Instruction::Dec(dest) => self.decrement(dest),
 
             Instruction::Add(dest, op) => self.add(dest, op),
+            Instruction::Addc(dest, op) => self.addc(dest, op),
             Instruction::Subb(dest, op) => self.subb(dest, op),
             Instruction::Anl(dest, op) => self.anl(dest, op),
             Instruction::Orl(dest, op) => self.orl(dest, op),
@@ -265,13 +266,13 @@ impl Lifter {
     fn anl(&mut self, dest: Argument, op: Argument) -> Vec<Ir51> {
         let dest_op: Operand = match dest {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             _ => todo!("{dest:?}"),
         };
 
         let src_op: Operand = match op {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             Argument::Data8(imm) => Operand::Constant(imm.into()),
             _ => todo!("{op:?}"),
         };
@@ -287,13 +288,13 @@ impl Lifter {
     fn orl(&mut self, dest: Argument, op: Argument) -> Vec<Ir51> {
         let dest_op: Operand = match dest {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             _ => todo!("{dest:?}"),
         };
 
         let src_op: Operand = match op {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             Argument::Data8(imm) => Operand::Constant(imm.into()),
             _ => todo!("{op:?}"),
         };
@@ -309,13 +310,13 @@ impl Lifter {
     fn xrl(&mut self, dest: Argument, op: Argument) -> Vec<Ir51> {
         let dest_op: Operand = match dest {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             _ => todo!("{dest:?}"),
         };
 
         let src_op: Operand = match op {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             Argument::Data8(imm) => Operand::Constant(imm.into()),
             _ => todo!("{op:?}"),
         };
@@ -385,11 +386,11 @@ impl Lifter {
     }
 
     fn push(&mut self, value: u8) -> Vec<Ir51> {
-        Ir51::generate_push(Operand::Var(value.into(), AddrSpace::iData), 1)
+        Ir51::generate_push(Operand::Var(value.into(), AddrSpace::iData, 1), 1)
     }
 
     fn pop(&mut self, value: u8) -> Vec<Ir51> {
-        Ir51::generate_pop(Operand::Var(value.into(), AddrSpace::iData), 1)
+        Ir51::generate_pop(Operand::Var(value.into(), AddrSpace::iData, 1), 1)
     }
 
     fn jump(&mut self, label: usize) -> Vec<Ir51> {
@@ -399,7 +400,7 @@ impl Lifter {
     fn increment(&mut self, dest: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             _ => todo!("{dest:?}"),
         };
 
@@ -414,7 +415,7 @@ impl Lifter {
     fn decrement(&mut self, dest: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             _ => todo!("{dest:?}"),
         };
 
@@ -434,7 +435,7 @@ impl Lifter {
 
         let src: Operand = match src {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             Argument::Data8(imm8) => Operand::Constant(imm8.into()),
             _ => todo!("{src:?}"),
         };
@@ -447,52 +448,47 @@ impl Lifter {
         }]
     }
 
-    fn subb(&mut self, dest: Argument, src: Argument) -> Vec<Ir51> {
+    fn addc(&mut self, dest: Argument, src: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
-            Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::Reg(Register::A) => Operand::Register(Register::A),
             _ => todo!("{dest:?}"),
         };
 
         let src: Operand = match src {
             Argument::Reg(reg) => Operand::Register(reg),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             Argument::Data8(imm8) => Operand::Constant(imm8.into()),
             _ => todo!("{src:?}"),
         };
 
-        vec![
-            Ir51::BinOp {
-                op: BinOp::Lt,
-                dest: Operand::Temp(1),
-                lhs: dest,
-                rhs: src,
-            },
-            Ir51::BinOp {
-                op: BinOp::Sub,
-                dest: Operand::Temp(0),
-                lhs: dest,
-                rhs: src,
-            },
-            Ir51::BinOp {
-                op: BinOp::Lt,
-                dest: Operand::Temp(2),
-                lhs: Operand::Temp(0),
-                rhs: Operand::Register(Register::C),
-            },
-            Ir51::BinOp {
-                op: BinOp::Sub,
-                dest,
-                lhs: Operand::Temp(0),
-                rhs: Operand::Register(Register::C),
-            },
-            Ir51::BinOp {
-                op: BinOp::Or,
-                dest: Operand::Register(Register::C),
-                lhs: Operand::Temp(1),
-                rhs: Operand::Temp(2),
-            },
-        ]
+        vec![Ir51::BinOp {
+            op: BinOp::Addc,
+            dest,
+            lhs: dest,
+            rhs: src,
+        }]
+    }
+
+    fn subb(&mut self, dest: Argument, src: Argument) -> Vec<Ir51> {
+        let dest: Operand = match dest {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
+            _ => todo!("{dest:?}"),
+        };
+
+        let src: Operand = match src {
+            Argument::Reg(reg) => Operand::Register(reg),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
+            Argument::Data8(imm8) => Operand::Constant(imm8.into()),
+            _ => todo!("{src:?}"),
+        };
+
+        vec![Ir51::BinOp {
+            op: BinOp::Subb,
+            dest,
+            lhs: dest,
+            rhs: src,
+        }]
     }
 
     fn cjne(&mut self, lhs: Argument, rhs: Argument, label: usize) -> Vec<Ir51> {
@@ -532,7 +528,7 @@ impl Lifter {
 
     fn mov(&mut self, dest: Argument, src: Argument) -> Vec<Ir51> {
         let dest: Operand = match dest {
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{dest:?}"),
         };
@@ -540,7 +536,7 @@ impl Lifter {
         let src: Operand = match src {
             Argument::Data8(imm8) => Operand::Constant(imm8.into()),
             Argument::Data16(imm16) => Operand::Constant(imm16),
-            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData),
+            Argument::IramAddress(addr) => Operand::Var(addr.into(), AddrSpace::iData, 1),
             Argument::Reg(reg) => Operand::Register(reg),
             _ => todo!("{src:?}"),
         };

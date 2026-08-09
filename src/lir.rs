@@ -52,6 +52,7 @@ pub type Constant = u16;
 pub type Version = usize;
 pub type TempIndex = usize;
 pub type VarId = usize;
+pub type Size = usize;
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum Operand {
@@ -62,11 +63,10 @@ pub enum Operand {
     Temp(TempIndex),
     TempSSAVar { index: TempIndex, version: Version },
 
-    Var(Addr, AddrSpace),
+    Var(Addr, AddrSpace, Size),
     SSAVar { addr: Addr, version: Version },
 
     Local(VarId),
-    Concat(VarId, VarId),
 }
 
 impl Operand {
@@ -78,9 +78,8 @@ impl Operand {
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::Temp(_)
-            | Operand::Var(_, _)
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => unreachable!("{self:?}"),
+            | Operand::Var(_, _, _)
+            | Operand::Local(_) => unreachable!("{self:?}"),
         }
     }
 
@@ -101,24 +100,30 @@ impl Operand {
         }
     }
 
-    pub fn does_overlap(&self, rhs: &Operand) -> bool {
-        match (self, rhs) {
-            (Operand::Concat(v1, v2), Operand::Local(lid))
-            | (Operand::Local(lid), Operand::Concat(v1, v2)) => v1 == lid || v2 == lid,
-
-            (Operand::Concat(v1, v2), Operand::Concat(l1, l2)) => {
-                v1 == l1 || v1 == l2 || v2 == l1 || v2 == l2
-            }
-
-            (op1, op2) => op1 == op2,
+    pub fn to_var_addr(self) -> Option<Addr> {
+        if let Operand::Var(addr, _, _) = self {
+            Some(addr)
+        } else {
+            None
         }
+    }
+
+    pub fn does_overlap(&self, rhs: &Operand) -> bool {
+        if let (Operand::Var(a1, s1, sz1), Operand::Var(a2, s2, sz2)) = (self, rhs) {
+            if s1 == s2 {
+                return *a1 < (*a2 + *sz2 as u16) && *a2 < (*a1 + *sz1 as u16);
+            }
+        }
+        self == rhs
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Hash, Eq)]
 pub enum BinOp {
     Add,
+    Addc,
     Sub,
+    Subb,
     Mul,
     Div,
     Mod,
@@ -137,7 +142,9 @@ impl BinOp {
     pub fn is_math_op(self) -> bool {
         match self {
             BinOp::Add => true,
+            BinOp::Addc => true,
             BinOp::Sub => true,
+            BinOp::Subb => true,
             BinOp::Mul => true,
             BinOp::Div => true,
             BinOp::Mod => true,
@@ -160,7 +167,9 @@ impl BinOp {
             BinOp::Lt => true,
 
             BinOp::Add => false,
+            BinOp::Addc => false,
             BinOp::Sub => false,
+            BinOp::Subb => false,
             BinOp::Mul => false,
             BinOp::Div => false,
             BinOp::Mod => false,
@@ -313,6 +322,16 @@ impl Ir51 {
             None
         }
     }
+
+    pub fn find_last_instr(instr: &Ir51, irs: &[Ir51], from: usize) -> Option<usize> {
+        for (i, ir) in irs.iter().enumerate().take(from).rev() {
+            if ir == instr {
+                return Some(i);
+            }
+        }
+
+        None
+    }
 }
 
 impl Display for Operand {
@@ -322,8 +341,14 @@ impl Display for Operand {
             Operand::Constant(c) => write!(f, "#0x{:02X}", c),
             Operand::Temp(idx) => write!(f, "t{}", idx),
             Operand::TempSSAVar { index, version } => write!(f, "t{}_{}", index, version),
-            Operand::Var(addr, space) => match space {
-                AddrSpace::iData => write!(f, "{}", format_addr(*addr)),
+            Operand::Var(addr, space, size) => match space {
+                AddrSpace::iData => {
+                    if *size > 1 {
+                        write!(f, "{}[size {}]", format_addr(*addr), size)
+                    } else {
+                        write!(f, "{}", format_addr(*addr))
+                    }
+                }
                 AddrSpace::xData => write!(f, "xData[0x{:04X}]", addr),
                 AddrSpace::Code => write!(f, "code[0x{:04X}]", addr),
             },
@@ -331,7 +356,6 @@ impl Display for Operand {
                 write!(f, "{}_{}", format_addr(*addr), version)
             }
             Operand::Local(id) => write!(f, "v{}", id),
-            Operand::Concat(low, high) => write!(f, "concat(v{}, v{})", low, high),
         }
     }
 }
@@ -340,7 +364,9 @@ impl Display for BinOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             BinOp::Add => write!(f, "+"),
+            BinOp::Addc => write!(f, "+c"),
             BinOp::Sub => write!(f, "-"),
+            BinOp::Subb => write!(f, "-b"),
             BinOp::Mul => write!(f, "*"),
             BinOp::Div => write!(f, "/"),
             BinOp::Mod => write!(f, "%"),
