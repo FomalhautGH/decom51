@@ -92,14 +92,6 @@ impl Operand {
         }
     }
 
-    pub fn to_local_id(self) -> Option<VarId> {
-        if let Operand::Local(id) = self {
-            Some(id)
-        } else {
-            None
-        }
-    }
-
     pub fn to_var_addr(self) -> Option<Addr> {
         if let Operand::Var(addr, _, _) = self {
             Some(addr)
