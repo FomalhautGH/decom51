@@ -355,8 +355,8 @@ impl ConstPropagation {
         let (result, shouldnt_set) = match op {
             BinOp::Lt => ((lhs < rhs) as u16, false),
             BinOp::Eq => ((lhs == rhs) as u16, false),
-            BinOp::Add => lhs.overflowing_add(rhs),
-            BinOp::Sub => lhs.overflowing_sub(rhs),
+            BinOp::Add | BinOp::Addc => lhs.overflowing_add(rhs),
+            BinOp::Sub | BinOp::Subb => lhs.overflowing_sub(rhs),
             BinOp::Mul => lhs.overflowing_mul(rhs),
             BinOp::Div => {
                 if let Some(result) = lhs.checked_div(rhs) {
@@ -382,8 +382,7 @@ impl ConstPropagation {
         };
 
         if !shouldnt_set {
-            // TODO: Don't mask result if dest register is 16bit
-            self.dest_to_state(dest, SSAState::Constant(result & 0xFF));
+            self.dest_to_state(dest, SSAState::Constant(result));
         }
     }
 
@@ -550,12 +549,7 @@ impl ConstPropagation {
 
             // We work on constant later
             Operand::Constant(_) => None,
-
-            Operand::Var(_, _)
-            | Operand::Temp(_)
-            | Operand::Register(_)
-            | Operand::Local(_)
-            | Operand::Concat(_, _) => {
+            Operand::Var(_, _, _) | Operand::Temp(_) | Operand::Register(_) | Operand::Local(_) => {
                 unreachable!("{operand:?}")
             }
         };

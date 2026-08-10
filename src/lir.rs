@@ -109,11 +109,12 @@ impl Operand {
     }
 
     pub fn does_overlap(&self, rhs: &Operand) -> bool {
-        if let (Operand::Var(a1, s1, sz1), Operand::Var(a2, s2, sz2)) = (self, rhs) {
-            if s1 == s2 {
-                return *a1 < (*a2 + *sz2 as u16) && *a2 < (*a1 + *sz1 as u16);
-            }
+        if let (Operand::Var(a1, s1, sz1), Operand::Var(a2, s2, sz2)) = (self, rhs)
+            && s1 == s2
+        {
+            return *a1 < (*a2 + *sz2 as u16) && *a2 < (*a1 + *sz1 as u16);
         }
+
         self == rhs
     }
 }
