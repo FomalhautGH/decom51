@@ -57,16 +57,25 @@ pub type Size = usize;
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum Operand {
     Constant(Constant),
-
     Register(Register),
 
     Temp(TempIndex),
-    TempSSAVar { index: TempIndex, version: Version },
+    TempSSAVar {
+        index: TempIndex,
+        version: Version,
+    },
 
-    Var(Addr, AddrSpace, Size),
-    SSAVar { addr: Addr, version: Version },
+    Var {
+        addr: Addr,
+        space: AddrSpace,
+        size: Size,
+    },
 
     Local(VarId),
+    SSAVar {
+        addr: Addr,
+        version: Version,
+    },
 }
 
 impl Operand {
@@ -78,7 +87,7 @@ impl Operand {
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::Temp(_)
-            | Operand::Var(_, _, _)
+            | Operand::Var { .. }
             | Operand::Local(_) => unreachable!("{self:?}"),
         }
     }
@@ -93,7 +102,7 @@ impl Operand {
     }
 
     pub fn to_var_addr(self) -> Option<Addr> {
-        if let Operand::Var(addr, _, _) = self {
+        if let Operand::Var { addr, .. } = self {
             Some(addr)
         } else {
             None
@@ -101,7 +110,18 @@ impl Operand {
     }
 
     pub fn does_overlap(&self, rhs: &Operand) -> bool {
-        if let (Operand::Var(a1, s1, sz1), Operand::Var(a2, s2, sz2)) = (self, rhs)
+        if let (
+            Operand::Var {
+                addr: a1,
+                space: s1,
+                size: sz1,
+            },
+            Operand::Var {
+                addr: a2,
+                space: s2,
+                size: sz2,
+            },
+        ) = (self, rhs)
             && s1 == s2
         {
             return *a1 < (*a2 + *sz2 as u16) && *a2 < (*a1 + *sz1 as u16);
@@ -334,7 +354,7 @@ impl Display for Operand {
             Operand::Constant(c) => write!(f, "#0x{:02X}", c),
             Operand::Temp(idx) => write!(f, "t{}", idx),
             Operand::TempSSAVar { index, version } => write!(f, "t{}_{}", index, version),
-            Operand::Var(addr, space, size) => match space {
+            Operand::Var { addr, space, size } => match space {
                 AddrSpace::iData => {
                     if *size > 1 {
                         write!(f, "{}[size {}]", format_addr(*addr), size)

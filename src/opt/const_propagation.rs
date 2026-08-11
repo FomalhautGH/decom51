@@ -549,7 +549,7 @@ impl ConstPropagation {
 
             // We work on constant later
             Operand::Constant(_) => None,
-            Operand::Var(_, _, _) | Operand::Temp(_) | Operand::Register(_) | Operand::Local(_) => {
+            Operand::Var { .. } | Operand::Temp(_) | Operand::Register(_) | Operand::Local(_) => {
                 unreachable!("{operand:?}")
             }
         };

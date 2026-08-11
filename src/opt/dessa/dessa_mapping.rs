@@ -194,7 +194,7 @@ impl DeSSAMapping {
             Operand::Register(_)
             | Operand::Constant(_)
             | Operand::Temp(_)
-            | Operand::Var(_, _, _)
+            | Operand::Var { .. }
             | Operand::Local(_) => None,
         }
     }

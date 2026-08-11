@@ -102,7 +102,7 @@ impl TryFrom<Operand> for Expr {
             Operand::Local(id) => Ok(Self::Var(id)),
             Operand::Temp(idx) => Ok(Self::Temp(idx)),
 
-            Operand::TempSSAVar { .. } | Operand::Var(_, _, _) | Operand::SSAVar { .. } => {
+            Operand::TempSSAVar { .. } | Operand::Var { .. } | Operand::SSAVar { .. } => {
                 Err("Illegal operand for Expr".to_string())
             }
         }

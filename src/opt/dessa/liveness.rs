@@ -177,7 +177,7 @@ impl Liveness {
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Var(_, _, _) | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
+            Operand::Var { .. } | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
                 unreachable!()
             }
         }
@@ -196,7 +196,7 @@ impl Liveness {
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Var(_, _, _) | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
+            Operand::Var { .. } | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
                 unreachable!()
             }
         }

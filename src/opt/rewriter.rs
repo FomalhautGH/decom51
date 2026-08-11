@@ -108,7 +108,7 @@ impl<'a> Rewriter<'a> {
             }
 
             Operand::Constant(_) => {}
-            Operand::Register(_) | Operand::Temp(_) | Operand::Var(_, _, _) | Operand::Local(_) => {
+            Operand::Register(_) | Operand::Temp(_) | Operand::Var { .. } | Operand::Local(_) => {
                 unreachable!()
             }
         }
@@ -136,7 +136,7 @@ impl<'a> Rewriter<'a> {
             }
 
             Operand::Constant(v) => Some(*v),
-            Operand::Register(_) | Operand::Temp(_) | Operand::Var(_, _, _) | Operand::Local(_) => {
+            Operand::Register(_) | Operand::Temp(_) | Operand::Var { .. } | Operand::Local(_) => {
                 unreachable!()
             }
         }

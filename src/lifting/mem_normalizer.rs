@@ -1,4 +1,4 @@
-use crate::common::{AddrSpace, Ir51, Operand, Register};
+use crate::common::{Addr, AddrSpace, Ir51, Operand, Register};
 pub struct MemNormalizer;
 
 impl MemNormalizer {
@@ -66,44 +66,50 @@ impl MemNormalizer {
 
     #[allow(clippy::identity_op)]
     fn resolve_register(reg: &Register, current_bank: u16) -> Operand {
+        let make_var = |addr: Addr| Operand::Var {
+            addr,
+            space: AddrSpace::iData,
+            size: 1,
+        };
+
         match reg {
-            Register::R0 => Operand::Var(0 + (current_bank << 3), AddrSpace::iData, 1),
-            Register::R1 => Operand::Var(1 + (current_bank << 3), AddrSpace::iData, 1),
-            Register::R2 => Operand::Var(2 + (current_bank << 3), AddrSpace::iData, 1),
-            Register::R3 => Operand::Var(3 + (current_bank << 3), AddrSpace::iData, 1),
-            Register::R4 => Operand::Var(4 + (current_bank << 3), AddrSpace::iData, 1),
-            Register::R5 => Operand::Var(5 + (current_bank << 3), AddrSpace::iData, 1),
-            Register::R6 => Operand::Var(6 + (current_bank << 3), AddrSpace::iData, 1),
-            Register::R7 => Operand::Var(7 + (current_bank << 3), AddrSpace::iData, 1),
+            Register::R0 => make_var(0 + (current_bank << 3)),
+            Register::R1 => make_var(1 + (current_bank << 3)),
+            Register::R2 => make_var(2 + (current_bank << 3)),
+            Register::R3 => make_var(3 + (current_bank << 3)),
+            Register::R4 => make_var(4 + (current_bank << 3)),
+            Register::R5 => make_var(5 + (current_bank << 3)),
+            Register::R6 => make_var(6 + (current_bank << 3)),
+            Register::R7 => make_var(7 + (current_bank << 3)),
 
-            Register::A => Operand::Var(0xE0, AddrSpace::iData, 1),
-            Register::B => Operand::Var(0xF0, AddrSpace::iData, 1),
-            Register::SP => Operand::Var(0x81, AddrSpace::iData, 1),
-            Register::DPL => Operand::Var(0x82, AddrSpace::iData, 1),
-            Register::DPH => Operand::Var(0x83, AddrSpace::iData, 1),
+            Register::A => make_var(0xE0),
+            Register::B => make_var(0xF0),
+            Register::SP => make_var(0x81),
+            Register::DPL => make_var(0x82),
+            Register::DPH => make_var(0x83),
 
-            Register::DPTR => Operand::Var(0x82, AddrSpace::iData, 1),
+            Register::DPTR => make_var(0x82),
 
-            Register::P0 => Operand::Var(0x80, AddrSpace::iData, 1),
-            Register::P1 => Operand::Var(0x90, AddrSpace::iData, 1),
-            Register::P2 => Operand::Var(0xA0, AddrSpace::iData, 1),
-            Register::P3 => Operand::Var(0xB0, AddrSpace::iData, 1),
+            Register::P0 => make_var(0x80),
+            Register::P1 => make_var(0x90),
+            Register::P2 => make_var(0xA0),
+            Register::P3 => make_var(0xB0),
 
-            Register::PCON => Operand::Var(0x87, AddrSpace::iData, 1),
-            Register::TCON => Operand::Var(0x88, AddrSpace::iData, 1),
-            Register::TMOD => Operand::Var(0x89, AddrSpace::iData, 1),
-            Register::TL0 => Operand::Var(0x8A, AddrSpace::iData, 1),
-            Register::TL1 => Operand::Var(0x8B, AddrSpace::iData, 1),
-            Register::TH0 => Operand::Var(0x8C, AddrSpace::iData, 1),
-            Register::TH1 => Operand::Var(0x8D, AddrSpace::iData, 1),
+            Register::PCON => make_var(0x87),
+            Register::TCON => make_var(0x88),
+            Register::TMOD => make_var(0x89),
+            Register::TL0 => make_var(0x8A),
+            Register::TL1 => make_var(0x8B),
+            Register::TH0 => make_var(0x8C),
+            Register::TH1 => make_var(0x8D),
 
-            Register::SCON => Operand::Var(0x98, AddrSpace::iData, 1),
-            Register::SBUF => Operand::Var(0x99, AddrSpace::iData, 1),
+            Register::SCON => make_var(0x98),
+            Register::SBUF => make_var(0x99),
 
-            Register::IE => Operand::Var(0xA8, AddrSpace::iData, 1),
-            Register::IP => Operand::Var(0xB8, AddrSpace::iData, 1),
+            Register::IE => make_var(0xA8),
+            Register::IP => make_var(0xB8),
 
-            Register::C => Operand::Var(0xD0, AddrSpace::iData, 1),
+            Register::C => make_var(0xD0),
 
             Register::PSW => todo!(
                 "Since PSW contains flags every single bit (like the Carry) we do not support its presence yet"
