@@ -229,10 +229,12 @@ impl Lifter {
             Instruction::Xrl(dest, op) => self.xrl(dest, op),
             Instruction::MulAb => self.mul_ab(),
             Instruction::DivAb => self.div_ab(),
+            Instruction::Jc(label) => self.jc(label),
             Instruction::Jnc(label) => self.jnc(label),
             Instruction::Jz(label) => self.jz(label),
             Instruction::Jnz(label) => self.jnz(label),
             Instruction::Ljmp(label) => self.jump(label),
+            Instruction::Sjmp(label) => self.jump(label),
             Instruction::Cjne(lhs, rhs, label) => self.cjne(lhs, rhs, label),
             Instruction::Push(value) => self.push(value),
             Instruction::Pop(value) => self.pop(value),
@@ -242,6 +244,25 @@ impl Lifter {
 
             _ => todo!("{instr:?}"),
         }
+    }
+
+    fn jc(&mut self, label: usize) -> Vec<Ir51> {
+        let true_jmp = label;
+        let false_jmp = self.current_index + 2;
+
+        vec![
+            Ir51::BinOp {
+                op: BinOp::Ne,
+                dest: Operand::Temp(0),
+                lhs: Operand::Register(Register::C),
+                rhs: Operand::Constant(0),
+            },
+            Ir51::BranchIf {
+                cond: Operand::Temp(0),
+                true_jmp,
+                false_jmp,
+            },
+        ]
     }
 
     fn jnc(&mut self, label: usize) -> Vec<Ir51> {

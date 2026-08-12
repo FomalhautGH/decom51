@@ -396,6 +396,8 @@ impl SSABuilder {
         dom_tree
     }
 
+    // Gets the current version for the scecified varkey, if a variable was never assigned to
+    // it outputs the number 0
     fn get_stack_top_for(stack: &VersionStack, key: VarKey) -> usize {
         stack.get(&key).and_then(|v| v.last()).copied().unwrap_or(0)
     }

@@ -30,6 +30,7 @@ impl VariableCoalescing {
         }
     }
 
+    // Runs the coalescing pass: merges non-interfering move operands, renames variables, and drops dead NOPs.
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         let mut mov_queue = Self::init_mov_queue(cfg);
 
@@ -65,51 +66,61 @@ impl VariableCoalescing {
         }
     }
 
+    // Iterates through all instructions and phis across all basic blocks to apply variable renamings.
     fn renaming(&self, cfg: &mut ControlFlowGraph) {
         for block in cfg.blocks.values_mut() {
             for ir in block.irs.iter_mut() {
                 self.rename(ir);
             }
+
+            for phi in block.phis.iter_mut() {
+                self.replace(&mut phi.operand);
+                for incoming in phi.incoming.values_mut() {
+                    self.replace(incoming);
+                }
+            }
         }
     }
 
+    // Updates the SSA operands of a single instruction to their coalesced target variables.
     fn rename(&self, ir: &mut Ir51) {
-        let replace = |op: &mut Operand| {
-            if let Some((addr, version)) = self.find_mapping_for(op) {
-                *op = Operand::SSAVar { addr, version }
-            }
-        };
-
         match ir {
             Ir51::Move { dest, src } => {
-                replace(dest);
-                replace(src);
+                self.replace(dest);
+                self.replace(src);
             }
 
             Ir51::BinOp { dest, lhs, rhs, .. } => {
-                replace(dest);
-                replace(lhs);
-                replace(rhs);
+                self.replace(dest);
+                self.replace(lhs);
+                self.replace(rhs);
             }
 
             Ir51::Store {
                 dest_ptr, value, ..
             } => {
-                replace(dest_ptr);
-                replace(value);
+                self.replace(dest_ptr);
+                self.replace(value);
             }
 
             Ir51::Load { dest, src_ptr, .. } => {
-                replace(dest);
-                replace(src_ptr);
+                self.replace(dest);
+                self.replace(src_ptr);
             }
 
-            Ir51::BranchIf { cond, .. } => replace(cond),
+            Ir51::BranchIf { cond, .. } => self.replace(cond),
 
             Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return | Ir51::Nop => {}
         }
     }
 
+    fn replace(&self, op: &mut Operand) {
+        if let Some((addr, version)) = self.find_mapping_for(op) {
+            *op = Operand::SSAVar { addr, version }
+        }
+    }
+
+    // Resolves the canonical coalesced SSAVar by following the mapping chain.
     fn find_mapping_for(&self, op: &Operand) -> Option<SSAVar> {
         let ssaop = op.to_ssavar()?;
 
@@ -121,6 +132,7 @@ impl VariableCoalescing {
         Some(it)
     }
 
+    // Merges dest and src SSA variables, updates the interference graph, and turns the MOV into a NOP.
     fn fusion(&mut self, mov: MoveInfo, cfg: &mut ControlFlowGraph) {
         let movblock = cfg.blocks.get_mut(&mov.blockid).unwrap();
         let movir = &mut movblock.irs[mov.idx];
@@ -160,6 +172,7 @@ impl VariableCoalescing {
         *movir = Ir51::Nop;
     }
 
+    // Collects all register-to-register SSA move instructions from the CFG into a work queue.
     fn init_mov_queue(cfg: &ControlFlowGraph) -> Vec<MoveInfo> {
         let mut queue = Vec::new();
 

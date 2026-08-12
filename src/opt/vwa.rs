@@ -32,26 +32,6 @@ struct BinOpUsage {
     index: usize,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-// TODO: Track variable byte width in TrackedValue::Classic.
-pub enum TrackedValue {
-    Classic(Addr),
-    Temporary(TempIndex),
-    Constant(Constant),
-}
-
-impl TrackedValue {
-    pub fn from_operand(op: &Operand) -> Option<Self> {
-        match op {
-            Operand::Var { addr, .. } => Some(Self::Classic(*addr)),
-            Operand::Local(id) => Some(Self::Classic(*id as Addr)),
-            Operand::Temp(id) => Some(Self::Temporary(*id)),
-            Operand::Constant(value) => Some(Self::Constant(*value)),
-            Operand::Register(_) | Operand::TempSSAVar { .. } | Operand::SSAVar { .. } => None,
-        }
-    }
-}
-
 // TODO: Generalize multi-byte aggregation beyond 16-bit patterns.
 #[derive(Default)]
 pub struct VariableWidthAggregation {
@@ -65,6 +45,7 @@ impl VariableWidthAggregation {
 
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         self.aggregate_variables(cfg);
+        self.aggregate_operations(cfg);
 
         if cfg!(debug_assertions) {
             println!("======================== VAR WIDTH AGGREGATION ========================");
@@ -74,6 +55,78 @@ impl VariableWidthAggregation {
                 print!("{}", block);
             }
         }
+    }
+
+    fn aggregate_operations(&mut self, cfg: &mut ControlFlowGraph) {
+        let mut modified = true;
+        while modified {
+            modified = false;
+
+            for block in cfg.blocks.values_mut() {
+                modified |= self.aggregate_ops(block);
+            }
+        }
+    }
+
+    fn aggregate_ops(&mut self, block: &mut BasicBlock) -> bool {
+        if let Some(fused_op) = Self::search_aggr_operation(&block.irs) {
+            let with = vec![Ir51::BinOp {
+                op: fused_op.op,
+                dest: fused_op.dest,
+                lhs: fused_op.lhs,
+                rhs: fused_op.rhs,
+            }];
+
+            block
+                .irs
+                .splice(fused_op.start_idx..=fused_op.end_idx, with);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn search_aggr_operation(irs: &[Ir51]) -> Option<FusedOperation> {
+        let window_size = 3;
+
+        for (start_idx, ir_window) in irs.windows(window_size).enumerate() {
+            let (first, second, third) = (ir_window[0], ir_window[1], ir_window[2]);
+
+            // Finds instruction sequences like this:
+            // 1: A = #0xF6
+            // 2: A = A + iData[0x08]
+            // 3: t0 = PSW != #0x00
+
+            // TODO: dont hardcode register addresses
+            if let Ir51::Move {
+                dest: Operand::Var { addr: 0xe0, .. },
+                src: Operand::Constant(val),
+            } = first
+                && let Ir51::BinOp {
+                    op: BinOp::Add,
+                    dest: Operand::Var { addr: 0xe0, .. },
+                    lhs: Operand::Var { addr: 0xe0, .. },
+                    rhs,
+                } = second
+                && let Ir51::BinOp {
+                    op: BinOp::Ne,
+                    dest: Operand::Temp(0),
+                    lhs: Operand::Var { addr: 0xd0, .. },
+                    rhs: Operand::Constant(0),
+                } = third
+            {
+                return Some(FusedOperation {
+                    start_idx,
+                    end_idx: start_idx + window_size - 1,
+                    op: BinOp::Ge,
+                    dest: Operand::Temp(0),
+                    lhs: rhs,
+                    rhs: Operand::Constant(0u8.wrapping_sub(val as u8).into()),
+                });
+            };
+        }
+
+        None
     }
 
     fn aggregate_variables(&mut self, cfg: &mut ControlFlowGraph) {

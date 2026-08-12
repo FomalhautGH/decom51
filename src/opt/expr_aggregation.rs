@@ -2,13 +2,29 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::{BlockId, Ir51, Operand},
-    lir::{AddrSpace, BinOp},
+    lir::{Addr, AddrSpace, BinOp, Constant, TempIndex},
     mir::{Expr, Mir51},
-    opt::{
-        cfg::{BasicBlock, ControlFlowGraph},
-        vwa::TrackedValue,
-    },
+    opt::cfg::{BasicBlock, ControlFlowGraph},
 };
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum TrackedValue {
+    Classic(Addr),
+    Temporary(TempIndex),
+    Constant(Constant),
+}
+
+impl TrackedValue {
+    pub fn from_operand(op: &Operand) -> Option<Self> {
+        match op {
+            Operand::Var { addr, .. } => Some(Self::Classic(*addr)),
+            Operand::Local(id) => Some(Self::Classic(*id as Addr)),
+            Operand::Temp(id) => Some(Self::Temporary(*id)),
+            Operand::Constant(value) => Some(Self::Constant(*value)),
+            Operand::Register(_) | Operand::TempSSAVar { .. } | Operand::SSAVar { .. } => None,
+        }
+    }
+}
 
 type UseCounter = HashMap<TrackedValue, usize>;
 
@@ -41,6 +57,8 @@ impl ExprAggregation {
         for ir in block.irs.iter() {
             self.record_usages(ir);
         }
+
+        println!("{:?}", self.use_count);
 
         for ir in block.irs.iter() {
             self.lift_instruction(ir)
@@ -128,9 +146,11 @@ impl ExprAggregation {
         Some(())
     }
 
-    fn mov(&mut self, dest: &Operand, src: &Operand) -> Option<()> {
+    fn mov(&mut self, dest: &Operand, src_op: &Operand) -> Option<()> {
         let dest_var: Expr = (*dest).try_into().ok()?;
-        let src = self.resolve_operand(src)?;
+        let src = self.resolve_operand(src_op)?;
+
+        self.consume_use(src_op);
 
         let assignment = Mir51::Assign {
             dest: dest_var,
@@ -141,11 +161,20 @@ impl ExprAggregation {
         Some(())
     }
 
-    fn binop(&mut self, op: &BinOp, dest: &Operand, lhs: &Operand, rhs: &Operand) -> Option<()> {
+    fn binop(
+        &mut self,
+        op: &BinOp,
+        dest: &Operand,
+        lhs_op: &Operand,
+        rhs_op: &Operand,
+    ) -> Option<()> {
         let dest_var: Expr = (*dest).try_into().ok()?;
+        let lhs = Box::new(self.resolve_operand(lhs_op)?);
+        let rhs = Box::new(self.resolve_operand(rhs_op)?);
 
-        let lhs = Box::new(self.resolve_operand(lhs)?);
-        let rhs = Box::new(self.resolve_operand(rhs)?);
+        self.consume_use(lhs_op);
+        self.consume_use(rhs_op);
+
         let src = match op {
             BinOp::Add | BinOp::Addc => Expr::Add(lhs, rhs),
             BinOp::Sub | BinOp::Subb => Expr::Sub(lhs, rhs),
@@ -173,38 +202,46 @@ impl ExprAggregation {
     }
 
     fn record_usages(&mut self, ir: &Ir51) {
-        let mut record_use = |op: &Operand| {
-            if let Some(tv) = TrackedValue::from_operand(op) {
-                self.use_count
-                    .entry(tv)
-                    .and_modify(|counter| *counter += 1)
-                    .or_insert(1);
-            }
-        };
-
         match ir {
             Ir51::Move { src, .. } => {
-                record_use(src);
+                self.record_use(src);
             }
 
             Ir51::BinOp { lhs, rhs, .. } => {
-                record_use(lhs);
-                record_use(rhs);
+                self.record_use(lhs);
+                self.record_use(rhs);
             }
 
             Ir51::Store {
                 dest_ptr, value, ..
             } => {
-                record_use(dest_ptr);
-                record_use(value);
+                self.record_use(dest_ptr);
+                self.record_use(value);
             }
 
             Ir51::Load { src_ptr, .. } => {
-                record_use(src_ptr);
+                self.record_use(src_ptr);
             }
 
-            Ir51::BranchIf { cond, .. } => record_use(cond),
+            Ir51::BranchIf { cond, .. } => self.record_use(cond),
             Ir51::Nop | Ir51::Jump(_) | Ir51::Call(_) | Ir51::Return => {}
+        }
+    }
+
+    fn record_use(&mut self, op: &Operand) {
+        if let Some(tv) = TrackedValue::from_operand(op) {
+            self.use_count
+                .entry(tv)
+                .and_modify(|counter| *counter += 1)
+                .or_insert(1);
+        }
+    }
+
+    fn consume_use(&mut self, op: &Operand) {
+        if let Some(tv) = TrackedValue::from_operand(op) {
+            self.use_count
+                .entry(tv)
+                .and_modify(|counter| *counter = counter.saturating_sub(1));
         }
     }
 
@@ -226,8 +263,7 @@ impl ExprAggregation {
 
     fn aggregate_or_emit(&mut self, dest: &Operand, def: Expr, assignment: Mir51) {
         if let Some(tv) = TrackedValue::from_operand(dest)
-            && let Some(count) = self.use_count.get(&tv)
-            && *count == 1
+            && let Some(1) = self.use_count.get(&tv)
         {
             self.definitions.insert(tv, def);
         } else {

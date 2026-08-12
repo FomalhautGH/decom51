@@ -31,10 +31,12 @@ pub enum Instruction {
     Dec(Argument),
 
     Lcall(usize),
+    Jc(usize),
     Jnc(usize),
     Jz(usize),
     Jnz(usize),
     Ljmp(usize),
+    Sjmp(usize),
 
     Push(u8),
     Pop(u8),
@@ -75,6 +77,8 @@ impl<'a> Parser<'a> {
                 TokenType::Div => self.div_ab(),
                 TokenType::Lcall
                 | TokenType::Ljmp
+                | TokenType::Sjmp
+                | TokenType::Jc
                 | TokenType::Jnc
                 | TokenType::Jz
                 | TokenType::Jnz => self.jump(tok),
@@ -146,6 +150,8 @@ impl<'a> Parser<'a> {
         if let TokenType::Label(labnum) = label {
             return match current_tok {
                 TokenType::Ljmp => Instruction::Ljmp(labnum),
+                TokenType::Sjmp => Instruction::Sjmp(labnum),
+                TokenType::Jc => Instruction::Jc(labnum),
                 TokenType::Jnc => Instruction::Jnc(labnum),
                 TokenType::Jz => Instruction::Jz(labnum),
                 TokenType::Jnz => Instruction::Jnz(labnum),

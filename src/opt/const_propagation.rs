@@ -541,10 +541,21 @@ impl ConstPropagation {
     fn operand_to_top(&mut self, operand: &Operand) {
         match operand {
             Operand::SSAVar { addr, version } => {
-                self.known_values.insert((*addr, *version), SSAState::Top)
+                let initial_state = if *version == 0 {
+                    SSAState::Bottom
+                } else {
+                    SSAState::Top
+                };
+                self.known_values.insert((*addr, *version), initial_state)
             }
+
             Operand::TempSSAVar { index, version } => {
-                self.known_temps.insert((*index, *version), SSAState::Top)
+                let initial_state = if *version == 0 {
+                    SSAState::Bottom
+                } else {
+                    SSAState::Top
+                };
+                self.known_temps.insert((*index, *version), initial_state)
             }
 
             // We work on constant later
