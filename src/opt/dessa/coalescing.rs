@@ -30,7 +30,8 @@ impl VariableCoalescing {
         }
     }
 
-    // Runs the coalescing pass: merges non-interfering move operands, renames variables, and drops dead NOPs.
+    // Runs the coalescing pass: merges non-interfering move operands, renames variables,
+    // and drops dead NOPs.
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         let mut mov_queue = Self::init_mov_queue(cfg);
 

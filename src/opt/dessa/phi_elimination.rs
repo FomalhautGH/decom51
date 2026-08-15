@@ -6,43 +6,41 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-struct CriticalEdgeInfo {
-    fromid: BlockId,
-    toid: BlockId,
+struct CriticalEdge {
+    from: BlockId,
+    to: BlockId,
 }
 
-// This type represent a sequence of phis to be converted as moves
-// in a block by the block the phi is generated from and the dest
-// and src operands.
-type PhiList = HashMap<BlockId, Vec<(Operand, Operand)>>;
-type NewEdges = HashMap<CriticalEdgeInfo, BlockId>;
+// Maps a predecessor block ID to the list of (dest, src) copy operations required for phi lowering.
+type PredecessorCopies = HashMap<BlockId, Vec<(Operand, Operand)>>;
+type SplitEdgeBlocks = HashMap<CriticalEdge, BlockId>;
 
 pub struct PhiElimination {
-    block_idx_counter: BlockId,
-    new_edges: NewEdges,
+    next_block_id: BlockId,
+    split_edge_blocks: SplitEdgeBlocks,
 }
 
 impl PhiElimination {
     pub fn new(cfg: &ControlFlowGraph) -> Self {
         Self {
-            block_idx_counter: cfg.blocks.keys().max().unwrap_or(&0) + 1,
-            new_edges: HashMap::new(),
+            next_block_id: cfg.blocks.keys().max().unwrap_or(&0) + 1,
+            split_edge_blocks: HashMap::new(),
         }
     }
 
     pub fn eliminate(&mut self, cfg: &mut ControlFlowGraph) {
         for block in cfg.blocks.clone().values() {
-            self.convert_phis_to_mov(block, cfg);
+            self.lower_block_phis(block, cfg);
         }
 
-        // Modify edges for critical edged and add new blocks to the cfg
-        for (edge, new_blockid) in &self.new_edges {
-            let [from_block, to_block] = cfg.blocks.get_disjoint_mut([&edge.fromid, &edge.toid]);
-            let [from_block, to_block] = [from_block.unwrap(), to_block.unwrap()];
-            Self::insert_middle_block(from_block, *new_blockid, to_block);
+        // Redirect CFG edges through newly created split blocks for critical edges
+        for (edge, split_block_id) in &self.split_edge_blocks {
+            let [pred_block, succ_block] = cfg.blocks.get_disjoint_mut([&edge.from, &edge.to]);
+            let [pred_block, succ_block] = [pred_block.unwrap(), succ_block.unwrap()];
+            Self::splice_split_block(pred_block, *split_block_id, succ_block);
         }
 
-        // Clean up all the phis
+        // Clean up all phi nodes across all basic blocks
         for block in cfg.blocks.values_mut() {
             block.phis.clear();
         }
@@ -60,171 +58,123 @@ impl PhiElimination {
         }
     }
 
-    fn convert_phis_to_mov(&mut self, block: &BasicBlock, cfg: &mut ControlFlowGraph) {
-        let mut phi_list: PhiList = HashMap::new();
-        let mut final_list: PhiList = HashMap::new();
+    fn lower_block_phis(&mut self, block: &BasicBlock, cfg: &mut ControlFlowGraph) {
+        let (mut raw_copies, mut final_copies) = Self::group_phis_by_predecessor(block);
+        Self::resolve_parallel_copies(&mut raw_copies, &mut final_copies);
+        self.place_moves(cfg, final_copies, block);
+    }
+
+    fn group_phis_by_predecessor(block: &BasicBlock) -> (PredecessorCopies, PredecessorCopies) {
+        let mut raw_copies: PredecessorCopies = HashMap::new();
+        let mut final_copies: PredecessorCopies = HashMap::new();
 
         for phi in &block.phis {
-            for from_blockid in phi.incoming.keys() {
-                phi_list.insert(*from_blockid, Vec::new());
-                final_list.insert(*from_blockid, Vec::new());
+            for pred_id in phi.incoming.keys() {
+                raw_copies.insert(*pred_id, Vec::new());
+                final_copies.insert(*pred_id, Vec::new());
             }
         }
 
         for phi in &block.phis {
-            for (from_blockid, incoming_operand) in &phi.incoming {
-                phi_list
-                    .entry(*from_blockid)
+            for (pred_id, incoming_operand) in &phi.incoming {
+                raw_copies
+                    .entry(*pred_id)
                     .or_default()
                     .push((phi.operand, *incoming_operand));
             }
         }
 
-        for (from_blockid, phis) in phi_list.iter_mut() {
-            let mut temp_counter = 0;
-            let mut do_temp = false;
+        (raw_copies, final_copies)
+    }
 
-            while let Some((dest, src)) = phis.pop() {
-                let temp = Operand::Temp(temp_counter);
+    // Resolves parallel copy conflicts / cycles using temporary variables
+    fn resolve_parallel_copies(
+        raw_copies: &mut PredecessorCopies,
+        final_copies: &mut PredecessorCopies,
+    ) {
+        for (pred_id, copies) in raw_copies.iter_mut() {
+            let mut temp_id = 0;
+            let mut needs_temp = false;
 
-                for (_, s) in &mut *phis {
-                    if dest == *s {
-                        *s = temp;
-                        do_temp = true;
+            while let Some((dest, src)) = copies.pop() {
+                let temp = Operand::Temp(temp_id);
+
+                for (_, pending_src) in &mut *copies {
+                    if dest == *pending_src {
+                        *pending_src = temp;
+                        needs_temp = true;
                     }
                 }
 
-                if do_temp {
-                    final_list
-                        .entry(*from_blockid)
+                if needs_temp {
+                    final_copies
+                        .entry(*pred_id)
                         .or_default()
                         .push((temp, dest));
-                    temp_counter += 1;
+                    temp_id += 1;
                 }
 
-                final_list
-                    .entry(*from_blockid)
+                final_copies
+                    .entry(*pred_id)
                     .or_default()
                     .push((dest, src));
 
-                do_temp = false;
+                needs_temp = false;
             }
         }
+    }
 
-        for (from_blockid, assignments) in final_list {
-            if from_blockid == block.id {
+    fn place_moves(
+        &mut self,
+        cfg: &mut ControlFlowGraph,
+        final_copies: PredecessorCopies,
+        target_block: &BasicBlock,
+    ) {
+        for (pred_id, assignments) in final_copies {
+            if pred_id == target_block.id {
                 continue;
             }
 
-            let [from_block, to_block] = cfg.blocks.get_disjoint_mut([&from_blockid, &block.id]);
-            let [from_block, to_block] = [from_block.unwrap(), to_block.unwrap()];
+            let [pred_block, succ_block] =
+                cfg.blocks.get_disjoint_mut([&pred_id, &target_block.id]);
+            let [pred_block, succ_block] = [pred_block.unwrap(), succ_block.unwrap()];
 
-            let (which_block, start) = if from_block.successors.len() > 1 {
-                if 1 < block.predecessors.len() {
-                    let middle_blockid = self.critical_edge(from_block.id, block.id, cfg);
-                    let middle_block = cfg.blocks.get_mut(&middle_blockid).unwrap();
-                    (middle_block, false)
+            let (destination_block, at_entry) = if pred_block.successors.len() > 1 {
+                if target_block.predecessors.len() > 1 {
+                    let split_block_id =
+                        self.split_critical_edge(pred_block.id, target_block.id, cfg);
+                    let split_block = cfg.blocks.get_mut(&split_block_id).unwrap();
+                    (split_block, false)
                 } else {
-                    (to_block, true)
+                    (succ_block, true)
                 }
             } else {
-                (from_block, false)
+                (pred_block, false)
             };
 
             for (dest, src) in assignments {
-                Self::insert_move(which_block, dest, src, start);
+                Self::insert_move(destination_block, dest, src, at_entry);
             }
         }
     }
 
-    // Inserts new block in the cfg if it doesn't already exists and returns its id
-    // otherwise it just returns the id of the previus existing block
-    fn critical_edge(
-        &mut self,
-        fromid: BlockId,
-        toid: BlockId,
-        cfg: &mut ControlFlowGraph,
-    ) -> BlockId {
-        let key = CriticalEdgeInfo { fromid, toid };
-
-        *self.new_edges.entry(key).or_insert_with(|| {
-            let mut new_block = BasicBlock::new(self.block_idx_counter);
-            new_block.irs.push(Ir51::Jump(toid));
-
-            new_block.predecessors.push(fromid);
-            new_block.successors.push(toid);
-
-            cfg.blocks.insert(new_block.id, new_block);
-
-            self.block_idx_counter += 1;
-            self.block_idx_counter - 1
-        })
-    }
-
-    fn insert_middle_block(
-        from_block: &mut BasicBlock,
-        middle_blockid: BlockId,
-        to_block: &mut BasicBlock,
-    ) {
-        // If a block has more than one successor then it MUST have at least
-        // one ir and the last one MUST be a branchif (for now)
-        match from_block
-            .irs
-            .last_mut()
-            .expect("Empty block for some reason")
-        {
-            Ir51::BranchIf {
-                true_jmp,
-                false_jmp,
-                ..
-            } => {
-                let is_true = *true_jmp == to_block.id;
-                let is_false = *false_jmp == to_block.id;
-
-                if is_true {
-                    *true_jmp = middle_blockid;
-                } else if is_false {
-                    *false_jmp = middle_blockid;
-                }
-
-                if !is_true && !is_false {
-                    unreachable!();
-                }
-            }
-            _ => unreachable!("Only beanchifs can be the last instruction of a critical edge"),
-        }
-
-        for suc in &mut from_block.successors {
-            if *suc == to_block.id {
-                *suc = middle_blockid;
-            }
-        }
-
-        for pred in &mut to_block.predecessors {
-            if *pred == from_block.id {
-                *pred = middle_blockid;
-            }
-        }
-    }
-
-    // Inserts a move in a block with the option to insert it at the start or at the end
-    // but before the last jump
-    fn insert_move(block: &mut BasicBlock, dest: Operand, src: Operand, start: bool) {
+    // Inserts a move instruction in a block, either at entry or before the block terminator
+    fn insert_move(block: &mut BasicBlock, dest: Operand, src: Operand, at_entry: bool) {
         let irs = &mut block.irs;
         let mov = Ir51::Move { dest, src };
 
-        if start {
+        if at_entry {
             irs.insert(0, mov);
         } else {
             let irs_len = irs.len();
             let last_ir = irs.last().unwrap_or(&Ir51::Nop);
 
-            let mut shift = 0;
+            let mut offset_from_end = 0;
             match last_ir {
                 Ir51::Jump(_) |
-                Ir51::BranchIf { .. } => shift = 1,
+                Ir51::BranchIf { .. } => offset_from_end = 1,
 
-                Ir51::Call(_) | // TODO: Tecnically a jump when we support it
+                Ir51::Call(_) | // TODO: Technically a jump when we support it
                 Ir51::Move { .. } |
                 Ir51::BinOp { .. } |
                 Ir51::Store { .. } |
@@ -233,7 +183,80 @@ impl PhiElimination {
                 Ir51::Nop => {}
             }
 
-            irs.insert(irs_len - shift, mov);
+            irs.insert(irs_len - offset_from_end, mov);
+        }
+    }
+
+    // Inserts a split block along a critical edge if one does not already exist, returning its ID
+    fn split_critical_edge(
+        &mut self,
+        from_id: BlockId,
+        to_id: BlockId,
+        cfg: &mut ControlFlowGraph,
+    ) -> BlockId {
+        let edge = CriticalEdge {
+            from: from_id,
+            to: to_id,
+        };
+
+        *self.split_edge_blocks.entry(edge).or_insert_with(|| {
+            let mut split_block = BasicBlock::new(self.next_block_id);
+            split_block.irs.push(Ir51::Jump(to_id));
+
+            split_block.predecessors.push(from_id);
+            split_block.successors.push(to_id);
+
+            cfg.blocks.insert(split_block.id, split_block);
+
+            self.next_block_id += 1;
+            self.next_block_id - 1
+        })
+    }
+
+    fn splice_split_block(
+        pred_block: &mut BasicBlock,
+        split_block_id: BlockId,
+        succ_block: &mut BasicBlock,
+    ) {
+        // If a block has more than one successor, its terminator must be a BranchIf
+        match pred_block
+            .irs
+            .last_mut()
+            .expect("Terminator instruction expected in block with multiple successors")
+        {
+            Ir51::BranchIf {
+                true_jmp,
+                false_jmp,
+                ..
+            } => {
+                let is_true = *true_jmp == succ_block.id;
+                let is_false = *false_jmp == succ_block.id;
+
+                if is_true {
+                    *true_jmp = split_block_id;
+                } else if is_false {
+                    *false_jmp = split_block_id;
+                }
+
+                if !is_true && !is_false {
+                    unreachable!("Branch destination must match successor block");
+                }
+            }
+            _ => unreachable!(
+                "Only BranchIf can be the terminator instruction of a critical edge source"
+            ),
+        }
+
+        for succ in &mut pred_block.successors {
+            if *succ == succ_block.id {
+                *succ = split_block_id;
+            }
+        }
+
+        for pred in &mut succ_block.predecessors {
+            if *pred == pred_block.id {
+                *pred = split_block_id;
+            }
         }
     }
 }

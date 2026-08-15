@@ -100,6 +100,7 @@ impl DeSSAMapping {
         let Some(ssavar) = operand.to_ssavar() else {
             return;
         };
+
         if self.ssa_mappings.contains_key(&ssavar) {
             return;
         }
