@@ -107,17 +107,11 @@ impl PhiElimination {
                 }
 
                 if needs_temp {
-                    final_copies
-                        .entry(*pred_id)
-                        .or_default()
-                        .push((temp, dest));
+                    final_copies.entry(*pred_id).or_default().push((temp, dest));
                     temp_id += 1;
                 }
 
-                final_copies
-                    .entry(*pred_id)
-                    .or_default()
-                    .push((dest, src));
+                final_copies.entry(*pred_id).or_default().push((dest, src));
 
                 needs_temp = false;
             }
