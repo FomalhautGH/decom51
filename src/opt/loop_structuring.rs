@@ -39,32 +39,23 @@ impl LoopStructuring {
         }
     }
 
-    fn rename_edges(&self, edges: &mut Vec<BlockId>, inside_block_id: BlockId) {
-        for edge in &mut *edges {
-            *edge = self.resolve_alias(*edge);
-        }
-
-        edges.retain(|succ| *succ != inside_block_id);
-        edges.sort();
-        edges.dedup();
-    }
-
+    // Phase 1: Macro Block Collapsing & Transposition
     fn collapse(&mut self, loop_tree: LoopTree, cfg: &mut StructuredCFG) {
-        for loop_tree in loop_tree.children {
-            self.collapse(loop_tree, cfg);
+        for child_tree in loop_tree.children {
+            self.collapse(child_tree, cfg);
         }
 
         let header_block = cfg.blocks.get(&loop_tree.header).unwrap();
 
-        let body_block_ids = self.gather_ids(&loop_tree.body);
-        let (predecessors, successors) = self.compute_edges(header_block, &body_block_ids, cfg);
-        let new_block_id = self.new_id();
+        let resolved_body_ids = self.gather_resolved_body_ids(&loop_tree.body);
+        let (predecessors, successors) = self.compute_edges(header_block, &resolved_body_ids, cfg);
+        let macro_block_id = self.allocate_block_id();
         let (header, nested_blocks) =
-            self.transpose_blocks(cfg, loop_tree.header, &body_block_ids, new_block_id);
+            self.transpose_blocks(cfg, loop_tree.header, &resolved_body_ids, macro_block_id);
 
-        // Insert block in the Graph
+        // Insert macro block into the Structured CFG
         let macro_block = StructuredBlock {
-            id: new_block_id,
+            id: macro_block_id,
             successors: successors.into_iter().collect(),
             predecessors: predecessors.into_iter().collect(),
             kind: BlockKind::Macro {
@@ -76,35 +67,19 @@ impl LoopStructuring {
         cfg.blocks.insert(macro_block.id, macro_block);
     }
 
-    // Removing the ids from the main cfg
-    fn transpose_blocks(
-        &mut self,
-        cfg: &mut StructuredCFG,
-        header_block_id: BlockId,
-        body_block_ids: &HashSet<BlockId>,
-        into_block_id: BlockId,
-    ) -> (StructuredBlock, Vec<StructuredBlock>) {
-        let mut nested_blocks = Vec::new();
+    // Resolves aliases for all block IDs in the loop body
+    fn gather_resolved_body_ids(&self, loop_body: &HashSet<BlockId>) -> HashSet<BlockId> {
+        let mut resolved_body_ids = HashSet::new();
 
-        let resolved_header_id = self.resolve_alias(header_block_id);
-        let header_block = cfg.blocks.remove(&resolved_header_id).unwrap();
-
-        self.block_aliases.insert(resolved_header_id, into_block_id);
-        self.block_aliases.insert(header_block_id, into_block_id);
-
-        for block_id in body_block_ids {
-            if let Some(block) = cfg.blocks.remove(block_id) {
-                nested_blocks.push(block);
-                self.block_aliases.insert(*block_id, into_block_id);
-            }
+        for &block_id in loop_body {
+            let resolved_id = self.resolve_alias(block_id);
+            resolved_body_ids.insert(resolved_id);
         }
 
-        nested_blocks.sort_by_key(|b| b.id);
-        (header_block, nested_blocks)
+        resolved_body_ids
     }
 
-    // Calculating the predecessors and successors of the macro block, successors are
-    // determined by exiting to an external block
+    // Calculates the external predecessors (incoming) and successors (loop exits) of the macro block
     fn compute_edges(
         &self,
         header_block: &StructuredBlock,
@@ -114,19 +89,19 @@ impl LoopStructuring {
         let mut predecessors = HashSet::new();
         let mut successors = HashSet::new();
 
-        for predecessor in &header_block.predecessors {
-            let predecessor = self.resolve_alias(*predecessor);
-            if !body_block_ids.contains(&predecessor) {
-                predecessors.insert(predecessor);
+        for &pred_id in &header_block.predecessors {
+            let resolved_pred = self.resolve_alias(pred_id);
+            if !body_block_ids.contains(&resolved_pred) {
+                predecessors.insert(resolved_pred);
             }
         }
 
-        for block_id in body_block_ids {
-            let body_block = cfg.blocks.get(block_id).unwrap();
-            for successor in &body_block.successors {
-                let successor = self.resolve_alias(*successor);
-                if !body_block_ids.contains(&successor) {
-                    successors.insert(successor);
+        for &block_id in body_block_ids {
+            let body_block = cfg.blocks.get(&block_id).unwrap();
+            for &succ_id in &body_block.successors {
+                let resolved_succ = self.resolve_alias(succ_id);
+                if !body_block_ids.contains(&resolved_succ) {
+                    successors.insert(resolved_succ);
                 }
             }
         }
@@ -134,31 +109,59 @@ impl LoopStructuring {
         (predecessors, successors)
     }
 
-    // Find all the ids we need, even the ones we moved to a macro block
-    fn gather_ids(&self, body: &HashSet<BlockId>) -> HashSet<BlockId> {
-        let mut body_block_ids = HashSet::new();
+    // Removes the loop body blocks from the main CFG and packages them into the macro block
+    fn transpose_blocks(
+        &mut self,
+        cfg: &mut StructuredCFG,
+        header_id: BlockId,
+        body_block_ids: &HashSet<BlockId>,
+        macro_block_id: BlockId,
+    ) -> (StructuredBlock, Vec<StructuredBlock>) {
+        let mut nested_blocks = Vec::new();
 
-        for block_id in body {
-            let alias_id = self.resolve_alias(*block_id);
-            body_block_ids.insert(alias_id);
+        let resolved_header_id = self.resolve_alias(header_id);
+        let header_block = cfg.blocks.remove(&resolved_header_id).unwrap();
+
+        self.block_aliases.insert(header_id, macro_block_id);
+        self.block_aliases
+            .insert(resolved_header_id, macro_block_id);
+
+        for &block_id in body_block_ids {
+            if let Some(block) = cfg.blocks.remove(&block_id) {
+                nested_blocks.push(block);
+                self.block_aliases.insert(block_id, macro_block_id);
+            }
         }
 
-        body_block_ids
+        nested_blocks.sort_by_key(|b| b.id);
+        (header_block, nested_blocks)
     }
 
-    fn resolve_alias(&self, id: BlockId) -> BlockId {
-        let mut current_id = id;
+    // Allocates a unique ID for the new macro block
+    fn allocate_block_id(&mut self) -> BlockId {
+        let id = self.next_block_id;
+        self.next_block_id += 1;
+        id
+    }
 
-        while let Some(&alias_id) = self.block_aliases.get(&current_id) {
-            current_id = alias_id;
+    // Phase 2: Global Edge Renaming & Alias Resolution
+    fn rename_edges(&self, edges: &mut Vec<BlockId>, current_block_id: BlockId) {
+        for target_id in &mut *edges {
+            *target_id = self.resolve_alias(*target_id);
+        }
+
+        edges.retain(|&target_id| target_id != current_block_id);
+        edges.sort();
+        edges.dedup();
+    }
+
+    fn resolve_alias(&self, block_id: BlockId) -> BlockId {
+        let mut current_id = block_id;
+
+        while let Some(&aliased_id) = self.block_aliases.get(&current_id) {
+            current_id = aliased_id;
         }
 
         current_id
-    }
-
-    // Increment the id for the new macro block
-    fn new_id(&mut self) -> BlockId {
-        self.next_block_id += 1;
-        self.next_block_id - 1
     }
 }

@@ -35,6 +35,43 @@ impl StructuredBlock {
     }
 }
 
+pub type StructuredBlockMap = HashMap<BlockId, StructuredBlock>;
+
+#[derive(Debug)]
+pub struct StructuredCFG {
+    pub blocks: StructuredBlockMap,
+    pub start_block: BlockId,
+}
+
+impl StructuredCFG {
+    pub fn from(cfg: ControlFlowGraph) -> Self {
+        let mut flat_blocks: StructuredBlockMap = HashMap::new();
+
+        for block in cfg.blocks.into_values() {
+            let block = StructuredBlock::from(block);
+            flat_blocks.insert(block.id, block);
+        }
+
+        Self {
+            blocks: flat_blocks,
+            start_block: cfg.start_block,
+        }
+    }
+}
+
+// TODO: Maybe do the same thind for the normal CFG and remove all that debug_assertions
+// messy thing
+impl Display for StructuredCFG {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut sorted_blocks: Vec<&StructuredBlock> = self.blocks.values().collect();
+        sorted_blocks.sort_by_key(|b| b.id);
+        for block in sorted_blocks {
+            write!(f, "{}", block)?;
+        }
+        Ok(())
+    }
+}
+
 impl Display for StructuredBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let indent = f.width().unwrap_or(0);
@@ -70,43 +107,6 @@ impl Display for StructuredBlock {
             }
         }
 
-        Ok(())
-    }
-}
-
-pub type StructuredBlockMap = HashMap<BlockId, StructuredBlock>;
-
-#[derive(Debug)]
-pub struct StructuredCFG {
-    pub blocks: StructuredBlockMap,
-    pub start_block: BlockId,
-}
-
-impl StructuredCFG {
-    pub fn from(cfg: ControlFlowGraph) -> Self {
-        let mut flat_blocks: StructuredBlockMap = HashMap::new();
-
-        for block in cfg.blocks.into_values() {
-            let block = StructuredBlock::from(block);
-            flat_blocks.insert(block.id, block);
-        }
-
-        Self {
-            blocks: flat_blocks,
-            start_block: cfg.start_block,
-        }
-    }
-}
-
-// TODO: Maybe do the same thind for the normal CFG and remove all that debug_assertions
-// messy thing
-impl Display for StructuredCFG {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut sorted_blocks: Vec<&StructuredBlock> = self.blocks.values().collect();
-        sorted_blocks.sort_by_key(|b| b.id);
-        for block in sorted_blocks {
-            write!(f, "{}", block)?;
-        }
         Ok(())
     }
 }
