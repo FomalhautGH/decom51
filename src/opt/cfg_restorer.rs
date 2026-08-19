@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     common::{BlockId, Ir51},
-    opt::cfg::{BasicBlock, ControlFlowGraph},
+    opt::cfg::{BasicBlock, ControlFlowGraph, HashBlocks},
 };
 
 #[derive(Debug)]
@@ -19,12 +19,14 @@ impl CFGRestorer {
         CFGRestorer::fill_successors(&mut blocks, &leaders);
         CFGRestorer::fill_predecessors(&mut blocks);
 
-        let blocks = blocks.into_iter().map(|b| (b.id, b)).collect();
+        let blocks: HashBlocks = blocks.into_iter().map(|b| (b.id, b)).collect();
 
         if cfg!(debug_assertions) {
-            println!("======================== IR CODE AFTER CFG ========================");
-            for (i, ir) in ir_code.iter().enumerate() {
-                println!("{i}: {ir}")
+            println!("======================== CFG ========================");
+            let mut sorted_blocks: Vec<&BasicBlock> = blocks.values().collect();
+            sorted_blocks.sort_by_key(|b| b.id);
+            for block in sorted_blocks {
+                print!("{}", block);
             }
         }
 
