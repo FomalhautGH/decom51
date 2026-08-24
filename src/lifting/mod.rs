@@ -11,8 +11,8 @@ pub struct Lifting;
 
 impl Lifting {
     pub fn lift(instructions: &[Instruction]) -> Vec<Ir51> {
-        let mut lifter = Lifter::new();
-        let mut ir_code = lifter.get_ir_instructions(instructions);
+        let mut lifter = Lifter::default();
+        let mut ir_code = lifter.lift_program(instructions);
 
         MemNormalizer::normalize(&mut ir_code);
 
