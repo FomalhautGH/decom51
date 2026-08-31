@@ -116,8 +116,12 @@ impl VariableCoalescing {
     }
 
     fn replace(&self, op: &mut Operand) {
-        if let Some((addr, version)) = self.find_mapping_for(op) {
-            *op = Operand::SSAVar { addr, version }
+        if let Some((addr, version, size)) = self.find_mapping_for(op) {
+            *op = Operand::SSAVar {
+                addr,
+                version,
+                size,
+            };
         }
     }
 

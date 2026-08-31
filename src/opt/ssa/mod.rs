@@ -173,8 +173,11 @@ impl SSABuilder {
                 .phis;
 
             for phi in phis.iter_mut() {
-                let (Operand::Var { addr, .. } | Operand::SSAVar { addr, .. }) = phi.operand else {
-                    unreachable!()
+                let (addr, size) = match phi.operand {
+                    Operand::Var { addr, size, .. } | Operand::SSAVar { addr, size, .. } => {
+                        (addr, size)
+                    }
+                    _ => unreachable!(),
                 };
 
                 let current_version = Self::get_stack_top_for(stack, VarKey::Mem(addr));
@@ -184,6 +187,7 @@ impl SSABuilder {
                     Operand::SSAVar {
                         addr,
                         version: current_version,
+                        size,
                     },
                 );
             }
@@ -296,7 +300,7 @@ impl SSABuilder {
             Operand::Var {
                 addr,
                 space: AddrSpace::iData,
-                ..
+                size,
             } => {
                 let key = VarKey::Mem(*addr);
                 let version = Self::get_stack_top_for(stack, key);
@@ -304,6 +308,7 @@ impl SSABuilder {
                 Operand::SSAVar {
                     addr: *addr,
                     version,
+                    size: *size,
                 }
             }
 
@@ -323,7 +328,7 @@ impl SSABuilder {
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Local(_) => *op,
+            | Operand::Local { .. } => *op,
         }
     }
 
@@ -351,7 +356,7 @@ impl SSABuilder {
             Operand::Var {
                 addr,
                 space: AddrSpace::iData,
-                ..
+                size,
             } => {
                 let key = VarKey::Mem(*addr);
                 let version = update(key);
@@ -359,6 +364,7 @@ impl SSABuilder {
                 Operand::SSAVar {
                     addr: *addr,
                     version,
+                    size: *size,
                 }
             }
             Operand::Temp(index) => {
@@ -377,7 +383,7 @@ impl SSABuilder {
             | Operand::Constant(_)
             | Operand::TempSSAVar { .. }
             | Operand::SSAVar { .. }
-            | Operand::Local(_) => *op,
+            | Operand::Local { .. } => *op,
         }
     }
 

@@ -71,10 +71,15 @@ pub enum Operand {
         size: Size,
     },
 
-    Local(VarId),
+    Local {
+        id: VarId,
+        size: Size,
+    },
+
     SSAVar {
         addr: Addr,
         version: Version,
+        size: Size,
     },
 }
 
@@ -88,14 +93,19 @@ impl Operand {
             | Operand::Constant(_)
             | Operand::Temp(_)
             | Operand::Var { .. }
-            | Operand::Local(_) => unreachable!("{self:?}"),
+            | Operand::Local { .. } => unreachable!("{self:?}"),
         }
     }
 
     // TODO: Check every place i could use this function in
     pub fn to_ssavar(self) -> Option<SSAVar> {
-        if let Operand::SSAVar { addr, version } = self {
-            Some((addr, version))
+        if let Operand::SSAVar {
+            addr,
+            version,
+            size,
+        } = self
+        {
+            Some((addr, version, size))
         } else {
             None
         }
@@ -365,10 +375,10 @@ impl Display for Operand {
                 AddrSpace::xData => write!(f, "xData[0x{:04X}]", addr),
                 AddrSpace::Code => write!(f, "code[0x{:04X}]", addr),
             },
-            Operand::SSAVar { addr, version } => {
+            Operand::SSAVar { addr, version, .. } => {
                 write!(f, "{}_{}", format_addr(*addr), version)
             }
-            Operand::Local(id) => write!(f, "v{}", id),
+            Operand::Local { id, .. } => write!(f, "v{}", id),
         }
     }
 }

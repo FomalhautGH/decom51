@@ -132,21 +132,19 @@ impl<'a> Interference<'a> {
     }
 
     fn add_read(&mut self, op: &Operand, liveset: &mut HashSet<SSAVar>) {
-        let Operand::SSAVar { addr, version } = *op else {
+        let Some(op) = op.to_ssavar() else {
             return;
         };
 
-        let op = (addr, version);
         liveset.insert(op);
     }
 
-    // TODO: Maybe add a methond on operand that converts in SSAVars
+    // TODO: Maybe add a method on operand that converts in SSAVars
     fn add_write(&mut self, dest: &Operand, liveset: &mut HashSet<SSAVar>) {
-        let Operand::SSAVar { addr, version } = *dest else {
+        let Some(dest) = dest.to_ssavar() else {
             return;
         };
 
-        let dest = (addr, version);
         liveset.remove(&dest);
 
         for ssavar in liveset.iter() {

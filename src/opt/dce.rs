@@ -111,8 +111,12 @@ impl DeadCodeElimination {
 
     fn use_count_subtract(&mut self, operand: &Operand) {
         match operand {
-            Operand::SSAVar { addr, version } => {
-                let key = (*addr, *version);
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                let key = (*addr, *version, *size);
 
                 self.variable_uses.entry(key).and_modify(|counter| {
                     *counter -= 1;
@@ -142,7 +146,10 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Register(_) | Operand::Temp(_) | Operand::Var { .. } | Operand::Local(_) => {
+            Operand::Register(_)
+            | Operand::Temp(_)
+            | Operand::Var { .. }
+            | Operand::Local { .. } => {
                 unreachable!()
             }
         }
@@ -151,7 +158,7 @@ impl DeadCodeElimination {
     fn delete_phi(&mut self, block: &mut BasicBlock, index: usize) {
         let phi = &mut block.phis[index];
 
-        let Operand::SSAVar { addr, .. } = phi.operand else {
+        let Operand::SSAVar { addr, size, .. } = phi.operand else {
             unreachable!();
         };
 
@@ -163,6 +170,7 @@ impl DeadCodeElimination {
             let operand = Operand::SSAVar {
                 addr,
                 version: incoming.extract_ssa_version(),
+                size,
             };
 
             self.use_count_subtract(&operand);
@@ -211,8 +219,13 @@ impl DeadCodeElimination {
 
     fn check_usage(&mut self, dest: Operand, loc: UseLocation) {
         match dest {
-            Operand::SSAVar { addr, version } => {
-                if !is_iram_addr(addr) && !self.variable_uses.contains_key(&(addr, version)) {
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                let key = (addr, version, size);
+                if !is_iram_addr(addr) && !self.variable_uses.contains_key(&key) {
                     self.dead_instructions.push(loc);
                 }
             }
@@ -227,7 +240,7 @@ impl DeadCodeElimination {
             | Operand::Constant(_)
             | Operand::Temp(_)
             | Operand::Register(_)
-            | Operand::Local(_) => {
+            | Operand::Local { .. } => {
                 unreachable!("{dest:?}")
             }
         };
@@ -249,7 +262,7 @@ impl DeadCodeElimination {
     }
 
     fn use_and_def_count_on_phi(&mut self, phi: &Phi, phi_index: usize, blockid: BlockId) {
-        let Operand::SSAVar { addr, .. } = phi.operand else {
+        let Operand::SSAVar { addr, size, .. } = phi.operand else {
             unreachable!();
         };
 
@@ -263,6 +276,7 @@ impl DeadCodeElimination {
             let operand = Operand::SSAVar {
                 addr,
                 version: incoming.extract_ssa_version(),
+                size,
             };
 
             self.use_count_on_operand(&operand);
@@ -303,8 +317,12 @@ impl DeadCodeElimination {
 
     fn save_def(&mut self, operand: &Operand, loc: UseLocation) {
         match operand {
-            Operand::SSAVar { addr, version } => {
-                self.variable_defs.insert((*addr, *version), loc);
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                self.variable_defs.insert((*addr, *version, *size), loc);
             }
 
             Operand::TempSSAVar { index, version } => {
@@ -312,7 +330,10 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Var { .. } | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
+            Operand::Var { .. }
+            | Operand::Register(_)
+            | Operand::Temp(_)
+            | Operand::Local { .. } => {
                 unreachable!()
             }
         }
@@ -320,9 +341,13 @@ impl DeadCodeElimination {
 
     fn use_count_on_operand(&mut self, operand: &Operand) {
         match operand {
-            Operand::SSAVar { addr, version } => {
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
                 self.variable_uses
-                    .entry((*addr, *version))
+                    .entry((*addr, *version, *size))
                     .and_modify(|counter| *counter += 1)
                     .or_insert(1);
             }
@@ -335,7 +360,10 @@ impl DeadCodeElimination {
             }
 
             Operand::Constant(_) => {}
-            Operand::Register(_) | Operand::Temp(_) | Operand::Var { .. } | Operand::Local(_) => {
+            Operand::Register(_)
+            | Operand::Temp(_)
+            | Operand::Var { .. }
+            | Operand::Local { .. } => {
                 unreachable!()
             }
         }

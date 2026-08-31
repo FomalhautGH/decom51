@@ -5,15 +5,16 @@ use std::{
 
 use crate::{
     common::BlockId,
-    lir::{Operand, Register},
+    lir::{Operand, Register, Size},
 };
+
 use std::prelude::v1;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
     Register(Register),
     Constant(u16),
-    Var(usize),
+    Var { id: usize, size: Size },
     Temp(usize),
 
     Add(Box<Expr>, Box<Expr>),
@@ -61,8 +62,11 @@ impl Expr {
             Expr::Register(reg) => {
                 vars.insert(Operand::Register(*reg));
             }
-            Expr::Var(id) => {
-                vars.insert(Operand::Local(*id));
+            Expr::Var { id, size } => {
+                vars.insert(Operand::Local {
+                    id: *id,
+                    size: *size,
+                });
             }
             Expr::Temp(idx) => {
                 vars.insert(Operand::Temp(*idx));
@@ -90,6 +94,14 @@ impl Expr {
             e => Expr::Eq(Box::new(e), Box::new(Expr::Constant(0))),
         }
     }
+
+    pub fn var_size(&self) -> Option<Size> {
+        if let Expr::Var { id, size } = self {
+            Some(*size)
+        } else {
+            None
+        }
+    }
 }
 
 impl TryFrom<Operand> for Expr {
@@ -99,7 +111,7 @@ impl TryFrom<Operand> for Expr {
         match op {
             Operand::Constant(val) => Ok(Self::Constant(val)),
             Operand::Register(register) => Ok(Self::Register(register)),
-            Operand::Local(id) => Ok(Self::Var(id)),
+            Operand::Local { id, size } => Ok(Self::Var { id, size }),
             Operand::Temp(idx) => Ok(Self::Temp(idx)),
 
             Operand::TempSSAVar { .. } | Operand::Var { .. } | Operand::SSAVar { .. } => {
@@ -178,7 +190,7 @@ impl Display for Expr {
         match self {
             Expr::Register(reg) => write!(f, "{:?}", reg),
             Expr::Constant(c) => write!(f, "{c}"),
-            Expr::Var(id) => write!(f, "var{}", id),
+            Expr::Var { id, .. } => write!(f, "var{}", id),
             Expr::Temp(idx) => write!(f, "temp{}", idx),
             Expr::Add(lhs, rhs) => write!(f, "({} + {})", lhs, rhs),
             Expr::Sub(lhs, rhs) => write!(f, "({} - {})", lhs, rhs),

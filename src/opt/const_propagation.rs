@@ -18,7 +18,7 @@ enum Either {
 impl Display for Either {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Either::SSAVar((addr, version)) => write!(f, "{}_{}", format_addr(*addr), version),
+            Either::SSAVar((addr, version, ..)) => write!(f, "{}_{}", format_addr(*addr), version),
             Either::TempSSAVar((idx, version)) => write!(f, "t{}_{}", idx, version),
         }
     }
@@ -131,13 +131,14 @@ impl ConstPropagation {
 
     fn insert_use_for_phi(&mut self, phi: &Phi, phi_index: usize, block_id: BlockId) {
         for incoming in phi.incoming.values() {
-            let Operand::SSAVar { addr, .. } = phi.operand else {
+            let Operand::SSAVar { addr, size, .. } = phi.operand else {
                 unreachable!();
             };
 
             let operand = Operand::SSAVar {
                 addr,
                 version: incoming.extract_ssa_version(),
+                size,
             };
 
             let operand = Self::operand_to_either(&operand);
@@ -411,7 +412,11 @@ impl ConstPropagation {
     // TODO: Maybe to this mapping with an .into()
     fn operand_to_either(op: &Operand) -> Either {
         match op {
-            Operand::SSAVar { addr, version } => Either::SSAVar((*addr, *version)),
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => Either::SSAVar((*addr, *version, *size)),
             Operand::TempSSAVar { index, version } => Either::TempSSAVar((*index, *version)),
             _ => unreachable!("{op:?}"),
         }
@@ -426,6 +431,7 @@ impl ConstPropagation {
         let Operand::SSAVar {
             addr,
             version: actual_version,
+            size,
         } = phi.operand
         else {
             unreachable!()
@@ -433,18 +439,24 @@ impl ConstPropagation {
 
         for (pred_block_id, incoming) in &phi.incoming {
             if self.reachable_blocks.contains(pred_block_id) {
-                self.delta_phi(addr, actual_version, incoming.extract_ssa_version());
+                self.delta_phi(addr, actual_version, incoming.extract_ssa_version(), size);
             }
         }
     }
 
-    fn delta_phi(&mut self, addr: Addr, actual_version: usize, incoming_version: usize) {
+    fn delta_phi(
+        &mut self,
+        addr: Addr,
+        actual_version: usize,
+        incoming_version: usize,
+        size: usize,
+    ) {
         if actual_version == incoming_version {
             return;
         }
 
-        let actual_key = &(addr, actual_version);
-        let incoming_key = &(addr, incoming_version);
+        let actual_key = &(addr, actual_version, size);
+        let incoming_key = &(addr, incoming_version, size);
 
         let [Some(val), Some(arg)] = self
             .known_values
@@ -476,7 +488,8 @@ impl ConstPropagation {
 
         if &result_state != val {
             *val = result_state;
-            self.ssa_queue.push(Either::SSAVar((addr, actual_version)));
+            self.ssa_queue
+                .push(Either::SSAVar((addr, actual_version, size)));
         }
     }
 
@@ -489,7 +502,7 @@ impl ConstPropagation {
     }
 
     fn set_phi_top(&mut self, phi: &Phi) {
-        let Operand::SSAVar { addr, .. } = phi.operand else {
+        let Operand::SSAVar { addr, size, .. } = phi.operand else {
             unreachable!()
         };
 
@@ -499,6 +512,7 @@ impl ConstPropagation {
             let operand = Operand::SSAVar {
                 addr,
                 version: incoming.extract_ssa_version(),
+                size,
             };
             self.operand_to_top(&operand);
         }
@@ -540,13 +554,18 @@ impl ConstPropagation {
 
     fn operand_to_top(&mut self, operand: &Operand) {
         match operand {
-            Operand::SSAVar { addr, version } => {
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
                 let initial_state = if *version == 0 {
                     SSAState::Bottom
                 } else {
                     SSAState::Top
                 };
-                self.known_values.insert((*addr, *version), initial_state)
+                self.known_values
+                    .insert((*addr, *version, *size), initial_state)
             }
 
             Operand::TempSSAVar { index, version } => {
@@ -560,7 +579,10 @@ impl ConstPropagation {
 
             // We work on constant later
             Operand::Constant(_) => None,
-            Operand::Var { .. } | Operand::Temp(_) | Operand::Register(_) | Operand::Local(_) => {
+            Operand::Var { .. }
+            | Operand::Temp(_)
+            | Operand::Register(_)
+            | Operand::Local { .. } => {
                 unreachable!("{operand:?}")
             }
         };

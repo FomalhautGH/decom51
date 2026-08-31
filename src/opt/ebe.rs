@@ -9,7 +9,7 @@ use crate::{
 pub struct EmptyBlockElimination;
 
 // TODO: We might use this phase do to edge contraction after creating the blocks
-// insted of doind it in the lifter
+// insted of doing it in the lifter
 impl EmptyBlockElimination {
     pub fn execute(cfg: &mut ControlFlowGraph) {
         let substitution_map = Self::find_substitutes(cfg);

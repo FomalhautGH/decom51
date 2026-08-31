@@ -101,7 +101,7 @@ impl Lifter {
         self.compact_and_remap_jumps(low_ir_stream);
     }
 
-    fn eliminate_unreachable_jumps(&mut self, low_ir_stream: &mut Vec<Ir51>) -> Option<()> {
+    fn eliminate_unreachable_jumps(&mut self, low_ir_stream: &mut [Ir51]) -> Option<()> {
         let reachable_jump_targets = self.collect_reachable_jump_targets(low_ir_stream);
 
         for i in 1..low_ir_stream.len() {

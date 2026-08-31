@@ -91,12 +91,14 @@ impl Liveness {
             // If there's a phi in the successor that inherits a ssavar from this block
             // we also add it to out
             for phi in &suc.phis {
-                let Some(Operand::SSAVar { addr, version }) = phi.incoming.get(&block.id) else {
-                    continue;
-                };
-
-                let key = (*addr, *version);
-                new_out_set.insert(key);
+                if let Some(op) = phi
+                    .incoming
+                    .get(&block.id)
+                    .copied()
+                    .and_then(|o| o.to_ssavar())
+                {
+                    new_out_set.insert(op);
+                }
             }
         }
 
@@ -170,14 +172,21 @@ impl Liveness {
     fn save_def(&mut self, operand: &Operand, blockid: BlockId) {
         // TODO: We could provably add a method to extract the key from a valid operand
         match operand {
-            Operand::SSAVar { addr, version } => {
-                let key = (*addr, *version);
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                let key = (*addr, *version, *size);
                 self.def_sets.entry(blockid).or_default().insert(key);
             }
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Var { .. } | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
+            Operand::Var { .. }
+            | Operand::Register(_)
+            | Operand::Temp(_)
+            | Operand::Local { .. } => {
                 unreachable!()
             }
         }
@@ -185,8 +194,12 @@ impl Liveness {
 
     fn save_use(&mut self, operand: &Operand, blockid: BlockId) {
         match operand {
-            Operand::SSAVar { addr, version } => {
-                let key = (*addr, *version);
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                let key = (*addr, *version, *size);
 
                 let def = self.def_sets.entry(blockid).or_default().contains(&key);
                 if !def {
@@ -196,7 +209,10 @@ impl Liveness {
 
             // We ignore Temps in this pass
             Operand::TempSSAVar { .. } | Operand::Constant(_) => {}
-            Operand::Var { .. } | Operand::Register(_) | Operand::Temp(_) | Operand::Local(_) => {
+            Operand::Var { .. }
+            | Operand::Register(_)
+            | Operand::Temp(_)
+            | Operand::Local { .. } => {
                 unreachable!()
             }
         }

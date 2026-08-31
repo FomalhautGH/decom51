@@ -13,17 +13,15 @@ mod mir;
 mod opt;
 mod syntax;
 
-// TODO: Maybe for the most complicates functions try to explain them
-// singularly with schemes ecc...
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let hex_file = &args[1];
 
     let instructions = SyntaxAnalyzer::analyze(hex_file).unwrap();
     let mut ir_code = Lifting::lift(&instructions);
-    let hirs = Optimizer::optimize(&mut ir_code);
+    let mut hirs = Optimizer::optimize(&mut ir_code);
 
-    CodeGeneration::generate(&hirs);
+    CodeGeneration::generate(&mut hirs);
 
     Ok(())
 }

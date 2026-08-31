@@ -22,7 +22,9 @@ pub struct Phi {
     pub incoming: Incoming,
 }
 
-pub type SSAVar = (Addr, Version);
+use crate::lir::Size;
+
+pub type SSAVar = (Addr, Version, Size);
 pub type TempSSAVar = (TempIndex, Version);
 
 // TODO: Maybe is it bettere to have SSAVar as a struct and implement PartialOrd

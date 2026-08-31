@@ -93,23 +93,15 @@ impl<'a> Rewriter<'a> {
     }
 
     fn rewrite_operand(&self, operand: &mut Operand) {
-        match operand {
-            Operand::SSAVar { addr, version } => {
-                let state = self.known_values[&(*addr, *version)];
-                if let SSAState::Constant(v) = state {
-                    *operand = Operand::Constant(v);
-                }
+        if let Some(ssaop) = operand.to_ssavar() {
+            let state = self.known_values[&ssaop];
+            if let SSAState::Constant(v) = state {
+                *operand = Operand::Constant(v);
             }
-            Operand::TempSSAVar { index, version } => {
-                let state = self.known_temps[&(*index, *version)];
-                if let SSAState::Constant(v) = state {
-                    *operand = Operand::Constant(v);
-                }
-            }
-
-            Operand::Constant(_) => {}
-            Operand::Register(_) | Operand::Temp(_) | Operand::Var { .. } | Operand::Local(_) => {
-                unreachable!()
+        } else if let Operand::TempSSAVar { index, version } = operand {
+            let state = self.known_temps[&(*index, *version)];
+            if let SSAState::Constant(v) = state {
+                *operand = Operand::Constant(v);
             }
         }
     }
@@ -117,27 +109,30 @@ impl<'a> Rewriter<'a> {
     // TODO: unite these two functions somehow
 
     fn get_constant(&self, operand: &Operand) -> Option<Constant> {
-        match operand {
-            Operand::SSAVar { addr, version } => {
-                let state = self.known_values[&(*addr, *version)];
-                if let SSAState::Constant(v) = state {
-                    Some(v)
-                } else {
-                    None
-                }
+        if let Some(ssaop) = operand.to_ssavar() {
+            let state = self.known_values[&ssaop];
+            if let SSAState::Constant(v) = state {
+                Some(v)
+            } else {
+                None
             }
-            Operand::TempSSAVar { index, version } => {
-                let state = self.known_temps[&(*index, *version)];
-                if let SSAState::Constant(v) = state {
-                    Some(v)
-                } else {
-                    None
+        } else {
+            match operand {
+                Operand::TempSSAVar { index, version } => {
+                    let state = self.known_temps[&(*index, *version)];
+                    if let SSAState::Constant(v) = state {
+                        Some(v)
+                    } else {
+                        None
+                    }
                 }
-            }
 
-            Operand::Constant(v) => Some(*v),
-            Operand::Register(_) | Operand::Temp(_) | Operand::Var { .. } | Operand::Local(_) => {
-                unreachable!()
+                Operand::Constant(v) => Some(*v),
+                Operand::Register(_)
+                | Operand::Temp(_)
+                | Operand::Var { .. }
+                | Operand::Local { .. } => unreachable!(),
+                Operand::SSAVar { .. } => unreachable!(),
             }
         }
     }

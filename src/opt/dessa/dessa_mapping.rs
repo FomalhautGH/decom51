@@ -2,10 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::{
-        Ir51,
+        Addr, Ir51,
         Operand::{self, Temp},
         Phi, Register, SSAVar, VarId,
     },
+    lir::Size,
     opt::{
         cfg::{BasicBlock, ControlFlowGraph},
         dessa::interference::{InterferenceGraph, do_they_interfere},
@@ -172,8 +173,12 @@ impl DeSSAMapping {
 
     fn map(&self, op: &mut Operand) -> Option<()> {
         match op {
-            Operand::SSAVar { addr, version } => {
-                let ssaop = (*addr, *version);
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                let ssaop = (*addr, *version, *size);
                 let id = *self.ssa_mappings.get(&ssaop)?;
 
                 // TODO: here we are hardcoding the mapping back to the SP register
@@ -181,7 +186,7 @@ impl DeSSAMapping {
                 if *addr == 0x81 {
                     *op = Operand::Register(Register::SP)
                 } else {
-                    *op = Operand::Local(id);
+                    *op = Operand::Local { id, size: *size };
                 }
 
                 Some(())
@@ -196,7 +201,7 @@ impl DeSSAMapping {
             | Operand::Constant(_)
             | Operand::Temp(_)
             | Operand::Var { .. }
-            | Operand::Local(_) => None,
+            | Operand::Local { .. } => None,
         }
     }
 }

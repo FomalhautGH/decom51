@@ -5,9 +5,7 @@ pub type Dominators = HashMap<BlockId, BlockId>;
 
 pub struct CHKAlgorithm;
 
-// TODO: Make sure to understand this algorithm
-// Cooper-Harvey-Kennedy algorithm for calculating the immediate dominators of the ir blocks
-// Description: https://en.wikipedia.org/wiki/Dominator_(graph_theory)
+// Cooper-Harvey-Kennedy algorithm for calculating the immidiate dominators of the basic blocks
 impl CHKAlgorithm {
     pub fn execute(blocks: &[&BasicBlock]) -> Dominators {
         let id_to_idx: Dominators = blocks
@@ -45,8 +43,8 @@ impl CHKAlgorithm {
         while changed {
             changed = false;
 
-            for &b_idx in &rpo {
-                let block = &blocks[b_idx];
+            for &block_idx in &rpo {
+                let block = &blocks[block_idx];
                 let mut new_idom = None;
 
                 for &p_id in &block.predecessors {
@@ -69,8 +67,8 @@ impl CHKAlgorithm {
                         }
                     }
 
-                    if idom[b_idx] != Some(target_idom_idx) {
-                        idom[b_idx] = Some(target_idom_idx);
+                    if idom[block_idx] != Some(target_idom_idx) {
+                        idom[block_idx] = Some(target_idom_idx);
                         changed = true;
                     }
                 }

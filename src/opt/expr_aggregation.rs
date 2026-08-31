@@ -18,7 +18,7 @@ impl TrackedValue {
     pub fn from_operand(operand: &Operand) -> Option<Self> {
         match operand {
             Operand::Var { addr, .. } => Some(Self::Variable(*addr)),
-            Operand::Local(id) => Some(Self::Variable(*id as Addr)),
+            Operand::Local { id, .. } => Some(Self::Variable(*id as Addr)),
             Operand::Temp(id) => Some(Self::Temporary(*id)),
             Operand::Constant(value) => Some(Self::Constant(*value)),
             Operand::Register(_) | Operand::TempSSAVar { .. } | Operand::SSAVar { .. } => None,
