@@ -368,7 +368,7 @@ impl VariableWidthAggregation {
                     Operand::Var {
                         addr: low_addr,
                         space: addr_space,
-                        size,
+                        ..
                     },
                 src: Operand::Constant(low_value),
             } = ir
@@ -380,10 +380,10 @@ impl VariableWidthAggregation {
                 let dest = Operand::Var {
                     addr: *low_addr,
                     space: *addr_space,
-                    size: *size,
+                    size: 2,
                 };
-                let src = Operand::Constant((high_value << 8) | low_value);
 
+                let src = Operand::Constant((high_value << 8) | low_value);
                 return Some(FusedInitialization {
                     start_idx,
                     end_idx,
@@ -561,7 +561,7 @@ impl VariableWidthAggregation {
                 // If carry is cleared before the next SUBB, they are not part
                 // of the same 16-bit subtraction.
                 Ir51::Move {
-                    dest: Operand::Register(Register::PSW),
+                    dest: Operand::Register(Register::C),
                     src: Operand::Constant(0),
                 } => return None,
 

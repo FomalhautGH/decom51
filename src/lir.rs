@@ -451,6 +451,7 @@ pub fn format_addr(addr: Addr) -> String {
     match addr {
         0xE0 => "A".to_string(),
         0xF0 => "B".to_string(),
+        0xD7 => "C".to_string(),
         0xD0 => "PSW".to_string(),
         0x81 => "SP".to_string(),
         0x82 => "DPL".to_string(),

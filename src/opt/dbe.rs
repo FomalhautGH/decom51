@@ -32,6 +32,10 @@ impl DeadBlockElimination {
             block
                 .predecessors
                 .retain(|blockid| self.reached_blocks.contains(blockid));
+
+            for phi in block.phis.iter_mut() {
+                phi.incoming.retain(|k, _| self.reached_blocks.contains(k));
+            }
         }
     }
 

@@ -110,7 +110,7 @@ impl ConstPropagation {
 
             println!("Temporaries:");
             let mut sorted_temps: Vec<(&TempSSAVar, &SSAState)> = self.known_temps.iter().collect();
-            sorted_temps.sort_by_key(|t| (t.0 .0, t.0 .1));
+            sorted_temps.sort_by_key(|t| (t.0.0, t.0.1));
             for (temp, state) in sorted_temps {
                 println!("  t{}_{}: {:?}", temp.0, temp.1, state);
             }
@@ -420,13 +420,7 @@ impl ConstPropagation {
         }
     }
 
-    fn evaluate_binop_states(
-        &mut self,
-        op: BinOp,
-        dest: &Operand,
-        lhs: &Operand,
-        rhs: &Operand,
-    ) {
+    fn evaluate_binop_states(&mut self, op: BinOp, dest: &Operand, lhs: &Operand, rhs: &Operand) {
         let lhs_state = self.operand_state(lhs);
         let rhs_state = self.operand_state(rhs);
 
@@ -445,9 +439,9 @@ impl ConstPropagation {
         let (result, shouldnt_set) = match op {
             BinOp::Lt => ((lhs < rhs) as u16, false),
             BinOp::Eq => ((lhs == rhs) as u16, false),
-            BinOp::Add | BinOp::Addc => lhs.overflowing_add(rhs),
-            BinOp::Sub | BinOp::Subb => lhs.overflowing_sub(rhs),
-            BinOp::Mul => lhs.overflowing_mul(rhs),
+            BinOp::Add | BinOp::Addc => (lhs.wrapping_add(rhs), false),
+            BinOp::Sub | BinOp::Subb => (lhs.wrapping_sub(rhs), false),
+            BinOp::Mul => (lhs.wrapping_mul(rhs), false),
             BinOp::Div => {
                 if let Some(result) = lhs.checked_div(rhs) {
                     (result, false)

@@ -56,7 +56,7 @@ impl ControlLogicExtraction {
             unreachable!()
         };
 
-        // We use an hastset to understant which block ids are part of the loop
+        // We use an hashset to understant which block ids are part of the loop
         // so that we can understand the correct condition of the while loop
         let mut loop_body = Vec::new();
         let mut body_block_ids = HashSet::new();

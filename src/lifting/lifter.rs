@@ -322,12 +322,24 @@ impl Lifter {
             _ => todo!("{src_arg:?}"),
         };
 
-        vec![Ir51::BinOp {
-            op: BinOp::Add,
-            dest: dest_operand,
-            lhs: dest_operand,
-            rhs: src_operand,
-        }]
+        vec![
+            Ir51::BinOp {
+                op: BinOp::Add,
+                dest: Operand::Temp(0),
+                lhs: dest_operand,
+                rhs: src_operand,
+            },
+            Ir51::BinOp {
+                op: BinOp::Gt,
+                dest: Operand::Register(Register::C),
+                lhs: Operand::Temp(0),
+                rhs: Operand::Constant((1 << 8) - 1),
+            },
+            Ir51::Move {
+                dest: dest_operand,
+                src: Operand::Temp(0),
+            },
+        ]
     }
 
     fn lift_addc(&mut self, dest_arg: Argument, src_arg: Argument) -> Vec<Ir51> {
@@ -377,12 +389,26 @@ impl Lifter {
             _ => todo!("{src_arg:?}"),
         };
 
-        vec![Ir51::BinOp {
-            op: BinOp::Subb,
-            dest: dest_operand,
-            lhs: dest_operand,
-            rhs: src_operand,
-        }]
+        vec![
+            Ir51::BinOp {
+                op: BinOp::Add,
+                dest: Operand::Temp(0),
+                lhs: src_operand,
+                rhs: Operand::Register(Register::C),
+            },
+            Ir51::BinOp {
+                op: BinOp::Gt,
+                dest: Operand::Register(Register::C),
+                lhs: Operand::Temp(0),
+                rhs: Operand::Register(Register::A),
+            },
+            Ir51::BinOp {
+                op: BinOp::Subb,
+                dest: dest_operand,
+                lhs: dest_operand,
+                rhs: src_operand,
+            },
+        ]
     }
 
     fn lift_inc(&mut self, dest_arg: Argument) -> Vec<Ir51> {

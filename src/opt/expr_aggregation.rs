@@ -275,7 +275,8 @@ impl ExprAggregation {
 
     fn aggregate_or_emit(&mut self, dest: &Operand, expr: Expr, assignment: Mir51) {
         if let Some(tracked_val) = TrackedValue::from_operand(dest)
-            && let Some(1) = self.use_counts.get(&tracked_val)
+            && (self.use_counts.get(&tracked_val) == Some(&1)
+                || matches!(tracked_val, TrackedValue::Temporary(_)))
         {
             self.definitions.insert(tracked_val, expr);
         } else {

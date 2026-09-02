@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    char::ToLowercase,
+    collections::{HashMap, HashSet},
+};
 
 use crate::{
     common::BlockId,
@@ -96,8 +99,18 @@ impl LoopStructuring {
             }
         }
 
+        for &suc_id in &header_block.successors {
+            let resolved_suc = self.resolve_alias(suc_id);
+            if !body_block_ids.contains(&resolved_suc) {
+                successors.insert(resolved_suc);
+            }
+        }
+
         for &block_id in body_block_ids {
-            let body_block = cfg.blocks.get(&block_id).unwrap();
+            let body_block = cfg.blocks.get(&block_id).unwrap_or_else(|| {
+                panic!("Block with id: {block_id} wasn't found");
+            });
+
             for &succ_id in &body_block.successors {
                 let resolved_succ = self.resolve_alias(succ_id);
                 if !body_block_ids.contains(&resolved_succ) {
@@ -117,24 +130,79 @@ impl LoopStructuring {
         body_block_ids: &HashSet<BlockId>,
         macro_block_id: BlockId,
     ) -> (StructuredBlock, Vec<StructuredBlock>) {
-        let mut nested_blocks = Vec::new();
+        let mut gathered_blocks = HashMap::new();
 
         let resolved_header_id = self.resolve_alias(header_id);
         let header_block = cfg.blocks.remove(&resolved_header_id).unwrap();
+        for &block_id in body_block_ids {
+            if let Some(block) = cfg.blocks.remove(&block_id) {
+                gathered_blocks.insert(block.id, block);
+            }
+        }
+
+        let ordered_nested_blocks =
+            self.topological_sort(gathered_blocks, &header_block, body_block_ids);
 
         self.block_aliases.insert(header_id, macro_block_id);
         self.block_aliases
             .insert(resolved_header_id, macro_block_id);
 
         for &block_id in body_block_ids {
-            if let Some(block) = cfg.blocks.remove(&block_id) {
-                nested_blocks.push(block);
-                self.block_aliases.insert(block_id, macro_block_id);
+            self.block_aliases.insert(block_id, macro_block_id);
+        }
+
+        (header_block, ordered_nested_blocks)
+    }
+
+    fn topological_sort(
+        &self,
+        mut gathered_blocks: HashMap<BlockId, StructuredBlock>,
+        header_block: &StructuredBlock,
+        body_block_ids: &HashSet<BlockId>,
+    ) -> Vec<StructuredBlock> {
+        let Some(start_block_id) = header_block
+            .successors
+            .iter()
+            .map(|s| self.resolve_alias(*s))
+            .find(|s| body_block_ids.contains(s))
+        else {
+            return gathered_blocks.into_values().collect();
+        };
+
+        let mut visited_blocks = HashSet::new();
+        let mut visit_stack = vec![(start_block_id, false)];
+        let mut topologic_order = Vec::new();
+
+        while let Some((block_id, is_black)) = visit_stack.pop() {
+            let Some(actual_block) = gathered_blocks.get(&block_id) else {
+                continue;
+            };
+
+            if is_black {
+                topologic_order.push(block_id);
+            } else {
+                if !visited_blocks.insert(block_id) {
+                    continue;
+                }
+
+                visit_stack.push((block_id, true));
+                for suc in &actual_block.successors {
+                    let suc = self.resolve_alias(*suc).clone();
+                    if gathered_blocks.contains_key(&suc) {
+                        visit_stack.push((suc, false));
+                    }
+                }
             }
         }
 
-        nested_blocks.sort_by_key(|b| b.id);
-        (header_block, nested_blocks)
+        let mut ordered_blocks = Vec::new();
+        for block_id in topologic_order.iter().rev() {
+            if let Some(block) = gathered_blocks.remove(&block_id) {
+                ordered_blocks.push(block);
+            }
+        }
+
+        ordered_blocks
     }
 
     // Allocates a unique ID for the new macro block

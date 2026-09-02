@@ -109,7 +109,7 @@ impl MemNormalizer {
             Register::IE => make_var(0xA8),
             Register::IP => make_var(0xB8),
 
-            Register::C => make_var(0xD0),
+            Register::C => make_var(0xD7),
 
             Register::PSW => todo!(
                 "Since PSW contains flags every single bit (like the Carry) we do not support its presence yet"
