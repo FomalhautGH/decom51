@@ -29,7 +29,7 @@ impl BasicBlock {
         let mut initialized_vars = HashSet::new();
 
         for ir in self.irs.iter() {
-            if let Ir51::Move { dest, src } = ir
+            if let Ir51::Move { dest, .. } = ir
                 && let Operand::Local { id, .. } = *dest
             {
                 initialized_vars.insert(id);
@@ -46,7 +46,7 @@ impl BasicBlock {
                     read = read || Self::was_it_used_here(ir, id);
                 }
 
-                if let Ir51::Move { dest, src } = ir
+                if let Ir51::Move { dest, .. } = ir
                     && let Operand::Local { id, .. } = *dest
                     && var == id
                 {
@@ -61,8 +61,8 @@ impl BasicBlock {
             }
         }
 
-        for (i, ir) in self.irs.iter_mut().enumerate() { 
-            if useless_idxs.contains(&i) { 
+        for (i, ir) in self.irs.iter_mut().enumerate() {
+            if useless_idxs.contains(&i) {
                 *ir = Ir51::Nop;
             }
         }

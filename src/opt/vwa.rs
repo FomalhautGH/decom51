@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    common::{Addr, AddrSpace, BinOp, Constant, Ir51, Operand, TempIndex},
+    common::{Addr, AddrSpace, BinOp, Constant, Ir51, Operand},
     lir::Register,
     opt::cfg::{BasicBlock, ControlFlowGraph},
 };
@@ -113,6 +113,14 @@ impl VariableWidthAggregation {
     }
 
     fn try_fusing_addc(irs: &[Ir51], addc_idx: usize) -> Option<FusedOperation> {
+        // TODO: remove this, here we use the normalized version of the A register to find it
+        // in `find_next_usage`, find a bettere solution for recognizing patterns
+        let accumulator = Operand::Var {
+            addr: 0xE0,
+            space: AddrSpace::iData,
+            size: 1,
+        };
+
         let Ir51::BinOp {
             op: BinOp::Addc,
             dest: addc_dest,
@@ -131,7 +139,7 @@ impl VariableWidthAggregation {
         let add_idx = Self::find_last_add(irs, addc_idx)?;
         let Ir51::BinOp {
             op: BinOp::Add,
-            dest: add_dest,
+            dest: _add_dest,
             lhs: add_lhs,
             rhs: add_rhs,
         } = irs[add_idx]
@@ -141,7 +149,7 @@ impl VariableWidthAggregation {
 
         let rhs_low_addr = add_rhs.to_var_addr()?;
         let (lhs_low_op, start_idx) = Self::find_last_initialization(&add_lhs, irs, add_idx)?;
-        let (dest_low_op, _) = Self::find_next_usage(&add_dest, irs, add_idx)?;
+        let (dest_low_op, _) = Self::find_next_usage(&accumulator, irs, add_idx)?;
         let (lhs_low_addr, dest_low_addr) = (lhs_low_op.to_var_addr()?, dest_low_op.to_var_addr()?);
 
         let op = BinOp::Add;

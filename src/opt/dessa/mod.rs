@@ -1,6 +1,5 @@
 use crate::opt::{
     cfg::ControlFlowGraph,
-    dce::DeadCodeElimination,
     dessa::{
         coalescing::VariableCoalescing,
         dessa_mapping::DeSSAMapping,

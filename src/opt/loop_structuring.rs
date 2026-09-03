@@ -1,7 +1,4 @@
-use std::{
-    char::ToLowercase,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::BlockId,
@@ -187,7 +184,7 @@ impl LoopStructuring {
 
                 visit_stack.push((block_id, true));
                 for suc in &actual_block.successors {
-                    let suc = self.resolve_alias(*suc).clone();
+                    let suc = self.resolve_alias(*suc);
                     if gathered_blocks.contains_key(&suc) {
                         visit_stack.push((suc, false));
                     }
@@ -197,7 +194,7 @@ impl LoopStructuring {
 
         let mut ordered_blocks = Vec::new();
         for block_id in topologic_order.iter().rev() {
-            if let Some(block) = gathered_blocks.remove(&block_id) {
+            if let Some(block) = gathered_blocks.remove(block_id) {
                 ordered_blocks.push(block);
             }
         }

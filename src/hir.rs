@@ -94,7 +94,7 @@ impl Hir51 {
             Hir51::While { cond, body } => {
                 writeln!(f, "{}while ({}) {{", indent_str, cond)?;
                 for child in body {
-                    child.fmt_recursive(f, indent + 1);
+                    child.fmt_recursive(f, indent + 1)?;
                 }
                 writeln!(f, "{}}}", indent_str)?;
             }
@@ -106,12 +106,12 @@ impl Hir51 {
             } => {
                 writeln!(f, "{}if ({}) {{", indent_str, cond)?;
                 for child in true_body {
-                    child.fmt_recursive(f, indent + 1);
+                    child.fmt_recursive(f, indent + 1)?;
                 }
                 if let Some(fb) = false_body {
                     writeln!(f, "{}}} else {{", indent_str)?;
                     for child in fb {
-                        child.fmt_recursive(f, indent + 1);
+                        child.fmt_recursive(f, indent + 1)?;
                     }
                 }
                 writeln!(f, "{}}}", indent_str)?;

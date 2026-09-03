@@ -240,10 +240,11 @@ impl ExprAggregation {
         self.decrement_use_count(cond);
 
         self.emitted_mirs.push(Mir51::If {
-            cond: resolved_cond,
+            cond: resolved_cond.simplify(),
             true_jmp: *true_jmp,
             false_jmp: *false_jmp,
         });
+
         Some(())
     }
 

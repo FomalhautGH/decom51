@@ -16,11 +16,9 @@ impl CodeGeneration {
 
         for hir in hirs.iter_mut() {
             if let Hir51::Assign {
-                declaration,
-                dest,
-                src,
+                declaration, dest, ..
             } = hir
-                && let Expr::Var { id, size } = dest
+                && let Expr::Var { id, .. } = dest
                 && !found_vars.contains(id)
             {
                 *declaration = true;

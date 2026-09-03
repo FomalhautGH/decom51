@@ -33,7 +33,6 @@ pub enum Expr {
     Ne(Box<Expr>, Box<Expr>),
 
     Deref(Box<Expr>),
-    Concat(Vec<Expr>),
 }
 
 impl Expr {
@@ -73,11 +72,30 @@ impl Expr {
             }
 
             Expr::Deref(expr) => expr.collect_dependencies(vars),
-            Expr::Concat(exprs) => {
-                for expr in exprs {
-                    expr.collect_dependencies(vars);
+        }
+    }
+
+    pub fn simplify(self) -> Self {
+        match self {
+            // (val != 0) -> val
+            Expr::Ne(lhs, rhs) if let Expr::Constant(0) = rhs.as_ref() => lhs.simplify(),
+
+            // (intval + var) > extval -> val >= (extval - intval + 1)
+            Expr::Gt(rhs, lhs) => {
+                if let Expr::Add(add1, var) = rhs.as_ref()
+                    && let (Expr::Constant(intval), Expr::Constant(extval)) =
+                        (add1.as_ref(), lhs.as_ref())
+                {
+                    return Expr::Ge(
+                        Box::new((**var).clone().simplify()),
+                        Box::new(Expr::Constant(extval - intval + 1)),
+                    );
                 }
+
+                Expr::Gt(rhs, lhs)
             }
+
+            _ => self,
         }
     }
 
@@ -96,7 +114,7 @@ impl Expr {
     }
 
     pub fn var_size(&self) -> Option<Size> {
-        if let Expr::Var { id, size } = self {
+        if let Expr::Var { size, .. } = self {
             Some(*size)
         } else {
             None
@@ -207,16 +225,6 @@ impl Display for Expr {
             Expr::Ge(lhs, rhs) => write!(f, "({} >= {})", lhs, rhs),
             Expr::Ne(lhs, rhs) => write!(f, "({} != {})", lhs, rhs),
             Expr::Deref(expr) => write!(f, "*({})", expr),
-            Expr::Concat(exprs) => {
-                write!(f, "concat(")?;
-                for (i, expr) in exprs.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", expr)?;
-                }
-                write!(f, ")")
-            }
         }
     }
 }

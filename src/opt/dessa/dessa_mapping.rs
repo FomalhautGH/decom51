@@ -2,11 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::{
-        Addr, Ir51,
+        Ir51,
         Operand::{self, Temp},
         Phi, Register, SSAVar, VarId,
     },
-    lir::Size,
     opt::{
         cfg::{BasicBlock, ControlFlowGraph},
         dessa::interference::{InterferenceGraph, do_they_interfere},

@@ -161,52 +161,6 @@ pub enum BinOp {
     Ne,
 }
 
-impl BinOp {
-    pub fn is_math_op(self) -> bool {
-        match self {
-            BinOp::Add => true,
-            BinOp::Addc => true,
-            BinOp::Sub => true,
-            BinOp::Subb => true,
-            BinOp::Mul => true,
-            BinOp::Div => true,
-            BinOp::Mod => true,
-            BinOp::And => true,
-            BinOp::Or => true,
-            BinOp::Xor => true,
-
-            BinOp::Eq => false,
-            BinOp::Lt => false,
-            BinOp::Gt => false,
-            BinOp::Le => false,
-            BinOp::Ge => false,
-            BinOp::Ne => false,
-        }
-    }
-
-    pub fn is_glue_op(self) -> bool {
-        match self {
-            BinOp::Or => true,
-            BinOp::Lt => true,
-
-            BinOp::Add => false,
-            BinOp::Addc => false,
-            BinOp::Sub => false,
-            BinOp::Subb => false,
-            BinOp::Mul => false,
-            BinOp::Div => false,
-            BinOp::Mod => false,
-            BinOp::And => false,
-            BinOp::Xor => false,
-            BinOp::Eq => false,
-            BinOp::Gt => false,
-            BinOp::Le => false,
-            BinOp::Ge => false,
-            BinOp::Ne => false,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Ir51 {
     Move {
@@ -294,66 +248,6 @@ impl Ir51 {
                 rhs: Operand::Constant(size),
             },
         ]
-    }
-
-    pub fn is_sp_increment(&self) -> bool {
-        matches!(
-            self,
-            Self::BinOp {
-                op: BinOp::Add,
-                dest: Operand::Register(Register::SP),
-                lhs: Operand::Register(Register::SP),
-                rhs: Operand::Constant(1),
-            }
-        )
-    }
-
-    pub fn is_sp_decrement(&self) -> bool {
-        matches!(
-            self,
-            Self::BinOp {
-                op: BinOp::Sub,
-                dest: Operand::Register(Register::SP),
-                lhs: Operand::Register(Register::SP),
-                rhs: Operand::Constant(1),
-            }
-        )
-    }
-
-    pub fn as_stack_load(&self) -> Option<&Operand> {
-        if let Self::Load {
-            dest,
-            src_ptr: Operand::Register(Register::SP),
-            space: AddrSpace::iData,
-        } = self
-        {
-            Some(dest)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_stack_store(&self) -> Option<&Operand> {
-        if let Self::Store {
-            dest_ptr: Operand::Register(Register::SP),
-            value,
-            space: AddrSpace::iData,
-        } = self
-        {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    pub fn find_last_instr(instr: &Ir51, irs: &[Ir51], from: usize) -> Option<usize> {
-        for (i, ir) in irs.iter().enumerate().take(from).rev() {
-            if ir == instr {
-                return Some(i);
-            }
-        }
-
-        None
     }
 }
 
