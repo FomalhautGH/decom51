@@ -99,13 +99,8 @@ impl Operand {
 
     // TODO: Check every place i could use this function in
     pub fn to_ssavar(self) -> Option<SSAVar> {
-        if let Operand::SSAVar {
-            addr,
-            version,
-            size,
-        } = self
-        {
-            Some((addr, version, size))
+        if let Operand::SSAVar { addr, version, .. } = self {
+            Some((addr, version))
         } else {
             None
         }
@@ -114,6 +109,14 @@ impl Operand {
     pub fn to_var_addr(self) -> Option<Addr> {
         if let Operand::Var { addr, .. } = self {
             Some(addr)
+        } else {
+            None
+        }
+    }
+
+    pub fn to_const_value(self) -> Option<Constant> {
+        if let Operand::Constant(value) = self {
+            Some(value)
         } else {
             None
         }

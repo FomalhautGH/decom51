@@ -180,15 +180,14 @@ impl ConstPropagation {
             Operand::SSAVar {
                 addr,
                 version,
-                size,
+                size: _,
             } => {
                 let initial_state = if *version == 0 {
                     SSAState::Bottom
                 } else {
                     SSAState::Top
                 };
-                self.known_values
-                    .insert((*addr, *version, *size), initial_state);
+                self.known_values.insert((*addr, *version), initial_state);
             }
 
             Operand::TempSSAVar { index, version } => {
@@ -498,7 +497,7 @@ impl ConstPropagation {
         let Operand::SSAVar {
             addr,
             version: actual_version,
-            size,
+            size: _,
         } = phi.operand
         else {
             unreachable!()
@@ -506,24 +505,18 @@ impl ConstPropagation {
 
         for (pred_block_id, incoming) in &phi.incoming {
             if self.reachable_blocks.contains(pred_block_id) {
-                self.delta_phi(addr, actual_version, incoming.extract_ssa_version(), size);
+                self.delta_phi(addr, actual_version, incoming.extract_ssa_version());
             }
         }
     }
 
-    fn delta_phi(
-        &mut self,
-        addr: Addr,
-        actual_version: usize,
-        incoming_version: usize,
-        size: usize,
-    ) {
+    fn delta_phi(&mut self, addr: Addr, actual_version: usize, incoming_version: usize) {
         if actual_version == incoming_version {
             return;
         }
 
-        let actual_key = &(addr, actual_version, size);
-        let incoming_key = &(addr, incoming_version, size);
+        let actual_key = &(addr, actual_version);
+        let incoming_key = &(addr, incoming_version);
 
         let [Some(val), Some(arg)] = self
             .known_values
@@ -555,8 +548,7 @@ impl ConstPropagation {
 
         if &result_state != val {
             *val = result_state;
-            self.ssa_worklist
-                .push(SSAKey::Var((addr, actual_version, size)));
+            self.ssa_worklist.push(SSAKey::Var((addr, actual_version)));
         }
     }
 
@@ -588,8 +580,8 @@ impl ConstPropagation {
             Operand::SSAVar {
                 addr,
                 version,
-                size,
-            } => SSAKey::Var((*addr, *version, *size)),
+                size: _,
+            } => SSAKey::Var((*addr, *version)),
             Operand::TempSSAVar { index, version } => SSAKey::Temp((*index, *version)),
             _ => unreachable!("{op:?}"),
         }

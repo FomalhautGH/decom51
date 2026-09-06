@@ -42,6 +42,7 @@ impl VariableWidthAggregation {
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         self.aggregate_variables(cfg);
         self.aggregate_operations(cfg);
+        // cfg.remove_useless_irs();
 
         if cfg!(debug_assertions) {
             println!("======================== VAR WIDTH AGGREGATION ========================");
@@ -69,32 +70,54 @@ impl VariableWidthAggregation {
     // --- Phase 1A: Intra-Block Arithmetic & Bitwise Fusion ---
     fn aggregate_intra_block(&mut self, block: &mut BasicBlock) -> bool {
         if let Some(fused_op) = Self::search_nbit_operation(&block.irs) {
-            let replacement_irs = vec![Ir51::BinOp {
-                op: fused_op.op,
-                dest: fused_op.dest,
-                lhs: fused_op.lhs,
-                rhs: fused_op.rhs,
-            }];
-
             self.expand_fused_addresses(&fused_op);
-
-            // TODO: Avoid range splice if unrelated instructions are interleaved.
-            block
-                .irs
-                .splice(fused_op.start_idx..=fused_op.end_idx, replacement_irs);
+            Self::replace_fused_op(block, fused_op);
             true
         } else {
             false
         }
     }
 
+    fn replace_fused_init(block: &mut BasicBlock, fused_init: FusedInitialization) {
+        let replacement_ir = Ir51::Move {
+            dest: fused_init.dest,
+            src: fused_init.src,
+        };
+
+        // TODO: Avoid range splice if unrelated instructions are interleaved.
+        block
+            .irs
+            .get_mut(fused_init.start_idx..=fused_init.end_idx)
+            .unwrap()
+            .fill(Ir51::Nop);
+
+        block.irs[fused_init.start_idx] = replacement_ir;
+    }
+
+    fn replace_fused_op(block: &mut BasicBlock, fused_op: FusedOperation) {
+        let replacement_ir = Ir51::BinOp {
+            op: fused_op.op,
+            dest: fused_op.dest,
+            lhs: fused_op.lhs,
+            rhs: fused_op.rhs,
+        };
+        // TODO: Avoid range splice if unrelated instructions are interleaved.
+        block
+            .irs
+            .get_mut(fused_op.start_idx..=fused_op.end_idx)
+            .unwrap()
+            .fill(Ir51::Nop);
+
+        block.irs[fused_op.start_idx] = replacement_ir;
+    }
+
     fn search_nbit_operation(irs: &[Ir51]) -> Option<FusedOperation> {
-        for (ir_idx, ir) in irs.iter().enumerate() {
-            if let Ir51::BinOp { op, .. } = ir {
+        for (ir_idx, instr) in irs.iter().enumerate() {
+            if let Ir51::BinOp { op, .. } = instr {
                 let fused_op = match op {
                     // TODO: Handle multi-byte SUBB chains beyond 2-byte pairs.
-                    BinOp::Addc => Self::try_fusing_addc(irs, ir_idx),
                     BinOp::Subb => Self::try_fusing_subb(irs, ir_idx),
+                    BinOp::Addc => Self::try_fusing_addc(irs, ir_idx),
 
                     BinOp::And => Self::try_fusing_bitwise(irs, ir_idx, BinOp::And),
                     BinOp::Xor => Self::try_fusing_bitwise(irs, ir_idx, BinOp::Xor),
@@ -112,9 +135,11 @@ impl VariableWidthAggregation {
         None
     }
 
-    fn try_fusing_addc(irs: &[Ir51], addc_idx: usize) -> Option<FusedOperation> {
-        // TODO: remove this, here we use the normalized version of the A register to find it
-        // in `find_next_usage`, find a bettere solution for recognizing patterns
+    fn try_fusing_addc_constant(
+        irs: &[Ir51],
+        high_addc_idx: usize,
+        high_lhs_init: &Operand,
+    ) -> Option<FusedOperation> {
         let accumulator = Operand::Var {
             addr: 0xE0,
             space: AddrSpace::iData,
@@ -123,50 +148,257 @@ impl VariableWidthAggregation {
 
         let Ir51::BinOp {
             op: BinOp::Addc,
-            dest: addc_dest,
-            lhs: addc_lhs,
-            rhs: addc_rhs,
-        } = irs[addc_idx]
+            dest: high_dest,
+            lhs: _high_lhs,
+            rhs: _high_rhs,
+        } = irs[high_addc_idx]
         else {
             unreachable!()
         };
 
-        let _ = addc_rhs.to_var_addr()?;
-        let (lhs_high_op, _) = Self::find_last_initialization(&addc_lhs, irs, addc_idx)?;
-        let (dest_high_op, end_idx) = Self::find_next_usage(&addc_dest, irs, addc_idx)?;
-        let (_, _) = (lhs_high_op.to_var_addr()?, dest_high_op.to_var_addr()?);
+        let high_lhs_const = high_lhs_init.to_const_value()?;
+        let (high_dest_op, end_idx) = Self::find_next_usage(&high_dest, irs, high_addc_idx)?;
+        let _high_dest_addr = high_dest_op.to_var_addr()?;
 
-        let add_idx = Self::find_last_add(irs, addc_idx)?;
+        let low_add_idx = Self::find_last_add(irs, high_addc_idx)?;
         let Ir51::BinOp {
             op: BinOp::Add,
-            dest: _add_dest,
-            lhs: add_lhs,
-            rhs: add_rhs,
-        } = irs[add_idx]
+            lhs: low_lhs,
+            rhs: low_rhs,
+            ..
+        } = irs[low_add_idx]
         else {
             unreachable!()
         };
 
-        let rhs_low_addr = add_rhs.to_var_addr()?;
-        let (lhs_low_op, start_idx) = Self::find_last_initialization(&add_lhs, irs, add_idx)?;
-        let (dest_low_op, _) = Self::find_next_usage(&accumulator, irs, add_idx)?;
-        let (lhs_low_addr, dest_low_addr) = (lhs_low_op.to_var_addr()?, dest_low_op.to_var_addr()?);
+        let (low_lhs_init_op, _) = Self::find_last_initialization(&low_lhs, irs, low_add_idx)?;
+        let low_lhs_const = low_lhs_init_op.to_const_value()?;
+
+        let (low_rhs_init_op, start_idx) =
+            Self::find_last_initialization(&low_rhs, irs, low_add_idx)?;
+        let low_rhs_addr = low_rhs_init_op.to_var_addr()?;
+
+        let (low_dest_op, _) = Self::find_next_usage(&accumulator, irs, low_add_idx)?;
+        let low_dest_addr = low_dest_op.to_var_addr()?;
 
         let op = BinOp::Add;
-        let lhs = Operand::Var {
-            addr: lhs_low_addr,
-            space: AddrSpace::iData,
-            size: 2,
-        };
+        let lhs = Operand::Constant((high_lhs_const << 8) | low_lhs_const);
 
         let rhs = Operand::Var {
-            addr: rhs_low_addr,
+            addr: low_rhs_addr,
             space: AddrSpace::iData,
             size: 2,
         };
 
         let dest = Operand::Var {
-            addr: dest_low_addr,
+            addr: low_dest_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        Some(FusedOperation {
+            start_idx,
+            end_idx,
+            op,
+            dest,
+            lhs,
+            rhs,
+        })
+    }
+
+    fn try_fusing_addc_variables(
+        irs: &[Ir51],
+        high_addc_idx: usize,
+        high_lhs_init: &Operand,
+    ) -> Option<FusedOperation> {
+        // TODO: remove this and in fusing subbc, here we use the normalized version of the A
+        // register to find it in `find_next_usage`, find a bettere solution for recognizing patterns
+        let accumulator = Operand::Var {
+            addr: 0xE0,
+            space: AddrSpace::iData,
+            size: 1,
+        };
+
+        let Ir51::BinOp {
+            op: BinOp::Addc,
+            dest: high_dest,
+            lhs: _high_lhs,
+            rhs: _high_rhs,
+        } = irs[high_addc_idx]
+        else {
+            unreachable!()
+        };
+
+        let high_lhs_op = high_lhs_init;
+        let (high_dest_op, end_idx) = Self::find_next_usage(&high_dest, irs, high_addc_idx)?;
+        let (_, _) = (high_lhs_op.to_var_addr()?, high_dest_op.to_var_addr()?);
+
+        let low_add_idx = Self::find_last_add(irs, high_addc_idx)?;
+        let Ir51::BinOp {
+            op: BinOp::Add,
+            lhs: low_lhs,
+            rhs: low_rhs,
+            ..
+        } = irs[low_add_idx]
+        else {
+            unreachable!()
+        };
+
+        let low_rhs_addr = low_rhs.to_var_addr()?;
+        let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_add_idx)?;
+        let (low_dest_op, _) = Self::find_next_usage(&accumulator, irs, low_add_idx)?;
+        let (low_lhs_addr, low_dest_addr) = (low_lhs_op.to_var_addr()?, low_dest_op.to_var_addr()?);
+
+        let op = BinOp::Add;
+        let lhs = Operand::Var {
+            addr: low_lhs_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        let rhs = Operand::Var {
+            addr: low_rhs_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        let dest = Operand::Var {
+            addr: low_dest_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        Some(FusedOperation {
+            start_idx,
+            end_idx,
+            op,
+            dest,
+            lhs,
+            rhs,
+        })
+    }
+
+    fn try_fusing_addc(irs: &[Ir51], addc_idx: usize) -> Option<FusedOperation> {
+        let Ir51::BinOp {
+            op: BinOp::Addc,
+            lhs: addc_lhs,
+            rhs: _addc_rhs,
+            ..
+        } = irs[addc_idx]
+        else {
+            unreachable!()
+        };
+
+        // Searches what value the accumulator (A) is.
+        let (high_lhs_init, _) = Self::find_last_initialization(&addc_lhs, irs, addc_idx)?;
+        match high_lhs_init {
+            Operand::Constant(_) => Self::try_fusing_addc_constant(irs, addc_idx, &high_lhs_init),
+            Operand::Var { .. } => Self::try_fusing_addc_variables(irs, addc_idx, &high_lhs_init),
+            _ => unreachable!(),
+        }
+    }
+
+    // Fuses subb used for condition
+    fn try_fusing_subb_constant(
+        irs: &[Ir51],
+        low_subb_idx: usize,
+        constval: Constant,
+    ) -> Option<FusedOperation> {
+        let carry = Operand::Var {
+            addr: 0xD7,
+            space: AddrSpace::iData,
+            size: 1,
+        };
+
+        let Ir51::BinOp {
+            op: BinOp::Subb,
+            lhs: low_lhs,
+            ..
+        } = irs[low_subb_idx]
+        else {
+            unreachable!()
+        };
+
+        let rhs_low_const = constval;
+        let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_subb_idx)?;
+        let low_lhs_addr = low_lhs_op.to_var_addr()?;
+
+        let high_subb_idx = Self::find_adjacent_subb(irs, low_subb_idx)?;
+        let Ir51::BinOp {
+            op: BinOp::Subb,
+            rhs: high_rhs,
+            ..
+        } = irs[high_subb_idx]
+        else {
+            unreachable!()
+        };
+
+        let rhs_high_const = high_rhs.to_const_value()?;
+        let (high_lhs_op, _) = Self::find_last_initialization(&low_lhs, irs, high_subb_idx)?;
+        let _ = high_lhs_op.to_var_addr()?;
+
+        let op = BinOp::Lt;
+        let lhs = Operand::Var {
+            addr: low_lhs_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        let rhs = Operand::Constant((rhs_high_const << 8) | rhs_low_const);
+        let end_idx = high_subb_idx;
+
+        Some(FusedOperation {
+            start_idx,
+            end_idx,
+            op,
+            dest: carry,
+            lhs,
+            rhs,
+        })
+    }
+
+    fn try_fusing_subb_variable(
+        irs: &[Ir51],
+        low_subb_idx: usize,
+        varaddr: Addr,
+    ) -> Option<FusedOperation> {
+        let Ir51::BinOp {
+            op: BinOp::Subb,
+            dest: low_dest,
+            lhs: low_lhs,
+            rhs: _low_rhs,
+        } = irs[low_subb_idx]
+        else {
+            unreachable!()
+        };
+
+        let low_rhs_addr = varaddr;
+
+        let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_subb_idx)?;
+        let (low_dest_op, _) = Self::find_next_usage(&low_dest, irs, low_subb_idx)?;
+        let (low_lhs_addr, low_dest_addr) = (low_lhs_op.to_var_addr()?, low_dest_op.to_var_addr()?);
+
+        let high_subb_idx = Self::find_adjacent_subb(irs, low_subb_idx)?;
+
+        let (high_lhs_op, _) = Self::find_last_initialization(&low_lhs, irs, high_subb_idx)?;
+        let (high_dest_op, end_idx) = Self::find_next_usage(&low_dest, irs, high_subb_idx)?;
+        let (_, _) = (high_lhs_op.to_var_addr()?, high_dest_op.to_var_addr()?);
+
+        let op = BinOp::Sub;
+        let lhs = Operand::Var {
+            addr: low_lhs_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        let rhs = Operand::Var {
+            addr: low_rhs_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        let dest = Operand::Var {
+            addr: low_dest_addr,
             space: AddrSpace::iData,
             size: 2,
         };
@@ -184,57 +416,32 @@ impl VariableWidthAggregation {
     fn try_fusing_subb(irs: &[Ir51], subb_idx: usize) -> Option<FusedOperation> {
         let Ir51::BinOp {
             op: BinOp::Subb,
-            dest: first_dest,
-            lhs: first_lhs,
-            rhs: first_rhs,
+            rhs: subb_rhs,
+            ..
         } = irs[subb_idx]
         else {
             unreachable!()
         };
 
-        let rhs_low_addr = first_rhs.to_var_addr()?;
-        let (lhs_low_op, start_idx) = Self::find_last_initialization(&first_lhs, irs, subb_idx)?;
-        let (dest_low_op, _) = Self::find_next_usage(&first_dest, irs, subb_idx)?;
-        let (lhs_low_addr, dest_low_addr) = (lhs_low_op.to_var_addr()?, dest_low_op.to_var_addr()?);
-
-        let next_subb_idx = Self::find_adjacent_subb(irs, subb_idx)?;
-
-        let _ = first_rhs.to_var_addr()?;
-        let (lhs_high_op, _) = Self::find_last_initialization(&first_lhs, irs, next_subb_idx)?;
-        let (dest_high_op, end_idx) = Self::find_next_usage(&first_dest, irs, next_subb_idx)?;
-        let (_, _) = (lhs_high_op.to_var_addr()?, dest_high_op.to_var_addr()?);
-
-        let op = BinOp::Sub;
-        let lhs = Operand::Var {
-            addr: lhs_low_addr,
-            space: AddrSpace::iData,
-            size: 2,
-        };
-
-        let rhs = Operand::Var {
-            addr: rhs_low_addr,
-            space: AddrSpace::iData,
-            size: 2,
-        };
-
-        let dest = Operand::Var {
-            addr: dest_low_addr,
-            space: AddrSpace::iData,
-            size: 2,
-        };
-
-        Some(FusedOperation {
-            start_idx,
-            end_idx,
-            op,
-            dest,
-            lhs,
-            rhs,
-        })
+        match subb_rhs {
+            Operand::Constant(val) => Self::try_fusing_subb_constant(irs, subb_idx, val),
+            Operand::Var { addr, .. } => Self::try_fusing_subb_variable(irs, subb_idx, addr),
+            _ => unreachable!(),
+        }
     }
 
-    fn try_fusing_bitwise(irs: &[Ir51], op_idx: usize, target_op: BinOp) -> Option<FusedOperation> {
-        let Ir51::BinOp { op, dest, lhs, rhs } = irs[op_idx] else {
+    fn try_fusing_bitwise(
+        irs: &[Ir51],
+        low_op_idx: usize,
+        target_op: BinOp,
+    ) -> Option<FusedOperation> {
+        let Ir51::BinOp {
+            op,
+            dest: low_dest,
+            lhs: low_lhs,
+            rhs: low_rhs,
+        } = irs[low_op_idx]
+        else {
             unreachable!()
         };
 
@@ -242,51 +449,51 @@ impl VariableWidthAggregation {
             return None;
         }
 
-        let rhs_low_addr = rhs.to_var_addr()?;
-        let (lhs_low_op, start_idx) = Self::find_last_initialization(&lhs, irs, op_idx)?;
-        let (dest_low_op, _) = Self::find_next_usage(&dest, irs, op_idx)?;
-        let (lhs_low_addr, dest_low_addr) = (lhs_low_op.to_var_addr()?, dest_low_op.to_var_addr()?);
+        let low_rhs_addr = low_rhs.to_var_addr()?;
+        let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_op_idx)?;
+        let (low_dest_op, _) = Self::find_next_usage(&low_dest, irs, low_op_idx)?;
+        let (low_lhs_addr, low_dest_addr) = (low_lhs_op.to_var_addr()?, low_dest_op.to_var_addr()?);
 
-        let next_op_idx = Self::find_adjacent_bitwise(irs, op_idx, target_op)?;
+        let high_op_idx = Self::find_adjacent_bitwise(irs, low_op_idx, target_op)?;
 
         let Ir51::BinOp {
-            dest: dest_high,
-            lhs: lhs_high,
-            rhs: rhs_high,
+            dest: high_dest,
+            lhs: high_lhs,
+            rhs: high_rhs,
             ..
-        } = irs[next_op_idx]
+        } = irs[high_op_idx]
         else {
             return None;
         };
 
-        let rhs_high_addr = rhs_high.to_var_addr()?;
-        let (lhs_high_op, _) = Self::find_last_initialization(&lhs_high, irs, next_op_idx)?;
-        let (dest_high_op, end_idx) = Self::find_next_usage(&dest_high, irs, next_op_idx)?;
-        let (lhs_high_addr, dest_high_addr) =
-            (lhs_high_op.to_var_addr()?, dest_high_op.to_var_addr()?);
+        let high_rhs_addr = high_rhs.to_var_addr()?;
+        let (high_lhs_op, _) = Self::find_last_initialization(&high_lhs, irs, high_op_idx)?;
+        let (high_dest_op, end_idx) = Self::find_next_usage(&high_dest, irs, high_op_idx)?;
+        let (high_lhs_addr, high_dest_addr) =
+            (high_lhs_op.to_var_addr()?, high_dest_op.to_var_addr()?);
 
-        if lhs_low_addr + 1 != lhs_high_addr
-            || rhs_low_addr + 1 != rhs_high_addr
-            || dest_low_addr + 1 != dest_high_addr
+        if low_lhs_addr + 1 != high_lhs_addr
+            || low_rhs_addr + 1 != high_rhs_addr
+            || low_dest_addr + 1 != high_dest_addr
         {
             return None;
         }
 
         let op = target_op;
         let lhs = Operand::Var {
-            addr: lhs_low_addr,
+            addr: low_lhs_addr,
             space: AddrSpace::iData,
             size: 2,
         };
 
         let rhs = Operand::Var {
-            addr: rhs_low_addr,
+            addr: low_rhs_addr,
             space: AddrSpace::iData,
             size: 2,
         };
 
         let dest = Operand::Var {
-            addr: dest_low_addr,
+            addr: low_dest_addr,
             space: AddrSpace::iData,
             size: 2,
         };
@@ -305,26 +512,26 @@ impl VariableWidthAggregation {
         let Ir51::BinOp {
             op: BinOp::Or,
             dest: or_dest,
-            lhs: or_lhs,
-            rhs: lhs_high,
+            lhs: low_lhs,
+            rhs: high_lhs,
         } = irs[or_idx]
         else {
             unreachable!()
         };
 
-        let lhs_high_addr = lhs_high.to_var_addr()?;
-        let (lhs_low_op, start_idx) = Self::find_last_initialization(&or_lhs, irs, or_idx)?;
-        let binop_usage = Self::find_next_binop_usage(&or_dest, irs, or_idx)?;
-        let lhs_low_addr = lhs_low_op.to_var_addr()?;
+        let high_lhs_addr = high_lhs.to_var_addr()?;
+        let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, or_idx)?;
+        let consumer_binop = Self::find_next_binop_usage(&or_dest, irs, or_idx)?;
+        let low_lhs_addr = low_lhs_op.to_var_addr()?;
 
-        (lhs_low_addr + 1 == lhs_high_addr).then_some(bool::default())?;
+        (low_lhs_addr + 1 == high_lhs_addr).then_some(bool::default())?;
 
-        let op = binop_usage.op;
-        let rhs = binop_usage.rhs;
-        let dest = binop_usage.dest;
-        let end_idx = binop_usage.index;
+        let op = consumer_binop.op;
+        let rhs = consumer_binop.rhs;
+        let dest = consumer_binop.dest;
+        let end_idx = consumer_binop.index;
         let lhs = Operand::Var {
-            addr: lhs_low_addr,
+            addr: low_lhs_addr,
             space: AddrSpace::iData,
             size: 2,
         };
@@ -340,29 +547,21 @@ impl VariableWidthAggregation {
     }
 
     fn expand_fused_addresses(&mut self, fused_op: &FusedOperation) {
-        if let Some(addr) = fused_op.dest.to_var_addr() {
-            self.fused_addresses.insert(addr);
+        if let Some(var_addr) = fused_op.dest.to_var_addr() {
+            self.fused_addresses.insert(var_addr);
         }
-        if let Some(addr) = fused_op.lhs.to_var_addr() {
-            self.fused_addresses.insert(addr);
+        if let Some(var_addr) = fused_op.lhs.to_var_addr() {
+            self.fused_addresses.insert(var_addr);
         }
-        if let Some(addr) = fused_op.rhs.to_var_addr() {
-            self.fused_addresses.insert(addr);
+        if let Some(var_addr) = fused_op.rhs.to_var_addr() {
+            self.fused_addresses.insert(var_addr);
         }
     }
 
     // --- Phase 1B: Inter-Block Constant Initialization Fusion ---
     fn aggregate_inter_block(&self, block: &mut BasicBlock) -> bool {
         if let Some(fused_init) = self.search_nbit_initialization(&block.irs) {
-            let replacement_irs = vec![Ir51::Move {
-                dest: fused_init.dest,
-                src: fused_init.src,
-            }];
-
-            // TODO: Avoid range splice if unrelated instructions are interleaved.
-            block
-                .irs
-                .splice(fused_init.start_idx..=fused_init.end_idx, replacement_irs);
+            Self::replace_fused_init(block, fused_init);
             true
         } else {
             false
@@ -374,24 +573,24 @@ impl VariableWidthAggregation {
             if let Ir51::Move {
                 dest:
                     Operand::Var {
-                        addr: low_addr,
+                        addr: low_var_addr,
                         space: addr_space,
                         ..
                     },
-                src: Operand::Constant(low_value),
+                src: Operand::Constant(low_const),
             } = ir
-                && self.fused_addresses.contains(low_addr)
-                && let Some((high_value, end_idx)) =
-                    Self::find_next_initialization(irs, *low_addr, ir_idx)
+                && self.fused_addresses.contains(low_var_addr)
+                && let Some((high_const, end_idx)) =
+                    Self::find_next_initialization(irs, *low_var_addr, ir_idx)
             {
                 let start_idx = ir_idx;
                 let dest = Operand::Var {
-                    addr: *low_addr,
+                    addr: *low_var_addr,
                     space: *addr_space,
                     size: 2,
                 };
 
-                let src = Operand::Constant((high_value << 8) | low_value);
+                let src = Operand::Constant((high_const << 8) | low_const);
                 return Some(FusedInitialization {
                     start_idx,
                     end_idx,
@@ -406,20 +605,22 @@ impl VariableWidthAggregation {
 
     fn find_next_initialization(
         irs: &[Ir51],
-        low_addr: Addr,
-        from_idx: usize,
+        low_var_addr: Addr,
+        after_idx: usize,
     ) -> Option<(Constant, usize)> {
-        let target_addr = low_addr + 1;
-        for (ir_idx, ir) in irs.iter().enumerate().skip(from_idx + 1) {
+        let expected_high_addr = low_var_addr + 1;
+        for (ir_idx, ir) in irs.iter().enumerate().skip(after_idx + 1) {
             if let Ir51::Move {
-                dest: Operand::Var {
-                    addr: high_addr, ..
-                },
-                src: Operand::Constant(high_value),
+                dest:
+                    Operand::Var {
+                        addr: candidate_high_addr,
+                        ..
+                    },
+                src: Operand::Constant(high_const),
             } = ir
-                && *high_addr == target_addr
+                && *candidate_high_addr == expected_high_addr
             {
-                return Some((*high_value, ir_idx));
+                return Some((*high_const, ir_idx));
             }
         }
 
@@ -460,7 +661,7 @@ impl VariableWidthAggregation {
         let window_size = 3;
 
         for (start_idx, window) in irs.windows(window_size).enumerate() {
-            let (first_ir, second_ir, third_ir) = (window[0], window[1], window[2]);
+            let (load_const_ir, add_var_ir, check_flag_ir) = (window[0], window[1], window[2]);
 
             // Finds instruction sequences like this:
             // 1: A = #0xF6
@@ -471,26 +672,26 @@ impl VariableWidthAggregation {
             if let Ir51::Move {
                 dest: Operand::Var { addr: 0xe0, .. },
                 src: Operand::Constant(constant_val),
-            } = first_ir
+            } = load_const_ir
                 && let Ir51::BinOp {
                     op: BinOp::Add,
                     dest: Operand::Var { addr: 0xe0, .. },
                     lhs: Operand::Var { addr: 0xe0, .. },
-                    rhs,
-                } = second_ir
+                    rhs: tested_var,
+                } = add_var_ir
                 && let Ir51::BinOp {
                     op: BinOp::Ne,
                     dest: Operand::Temp(0),
                     lhs: Operand::Var { addr: 0xd0, .. },
                     rhs: Operand::Constant(0),
-                } = third_ir
+                } = check_flag_ir
             {
                 return Some(FusedOperation {
                     start_idx,
                     end_idx: start_idx + window_size - 1,
                     op: BinOp::Ge,
                     dest: Operand::Temp(0),
-                    lhs: rhs,
+                    lhs: tested_var,
                     rhs: Operand::Constant(0u8.wrapping_sub(constant_val as u8).into()),
                 });
             };
@@ -503,9 +704,9 @@ impl VariableWidthAggregation {
     fn find_last_initialization(
         target_op: &Operand,
         irs: &[Ir51],
-        from_idx: usize,
+        before_idx: usize,
     ) -> Option<(Operand, usize)> {
-        for (ir_idx, ir) in irs.iter().enumerate().take(from_idx).rev() {
+        for (ir_idx, ir) in irs.iter().enumerate().take(before_idx).rev() {
             match ir {
                 Ir51::Move { dest, src } if dest == target_op => return Some((*src, ir_idx)),
                 _ => {}
@@ -519,9 +720,9 @@ impl VariableWidthAggregation {
     fn find_next_usage(
         target_op: &Operand,
         irs: &[Ir51],
-        from_idx: usize,
+        start_idx: usize,
     ) -> Option<(Operand, usize)> {
-        for (ir_idx, ir) in irs.iter().enumerate().skip(from_idx) {
+        for (ir_idx, ir) in irs.iter().enumerate().skip(start_idx) {
             match ir {
                 Ir51::Move { dest, src } if src == target_op => return Some((*dest, ir_idx)),
                 _ => {}
@@ -534,9 +735,9 @@ impl VariableWidthAggregation {
     fn find_next_binop_usage(
         target_op: &Operand,
         irs: &[Ir51],
-        from_idx: usize,
+        start_idx: usize,
     ) -> Option<BinOpUsage> {
-        for (ir_idx, ir) in irs.iter().enumerate().skip(from_idx + 1) {
+        for (ir_idx, ir) in irs.iter().enumerate().skip(start_idx + 1) {
             match ir {
                 Ir51::BinOp { op, dest, lhs, rhs } if lhs == target_op => {
                     return Some(BinOpUsage {
@@ -553,8 +754,8 @@ impl VariableWidthAggregation {
         None
     }
 
-    fn find_last_add(irs: &[Ir51], from_idx: usize) -> Option<usize> {
-        for (ir_idx, ir) in irs.iter().enumerate().take(from_idx).rev() {
+    fn find_last_add(irs: &[Ir51], before_idx: usize) -> Option<usize> {
+        for (ir_idx, ir) in irs.iter().enumerate().take(before_idx).rev() {
             if let Ir51::BinOp { op: BinOp::Add, .. } = ir {
                 return Some(ir_idx);
             }
@@ -563,8 +764,8 @@ impl VariableWidthAggregation {
         None
     }
 
-    fn find_adjacent_subb(irs: &[Ir51], subb_idx: usize) -> Option<usize> {
-        for (ir_idx, ir) in irs.iter().enumerate().skip(subb_idx + 1) {
+    fn find_adjacent_subb(irs: &[Ir51], low_subb_idx: usize) -> Option<usize> {
+        for (ir_idx, ir) in irs.iter().enumerate().skip(low_subb_idx + 1) {
             match ir {
                 // If carry is cleared before the next SUBB, they are not part
                 // of the same 16-bit subtraction.
@@ -584,8 +785,8 @@ impl VariableWidthAggregation {
         None
     }
 
-    fn find_adjacent_bitwise(irs: &[Ir51], from_idx: usize, target_op: BinOp) -> Option<usize> {
-        for (ir_idx, ir) in irs.iter().enumerate().skip(from_idx + 1) {
+    fn find_adjacent_bitwise(irs: &[Ir51], low_op_idx: usize, target_op: BinOp) -> Option<usize> {
+        for (ir_idx, ir) in irs.iter().enumerate().skip(low_op_idx + 1) {
             if let Ir51::BinOp { op, .. } = ir
                 && *op == target_op
             {

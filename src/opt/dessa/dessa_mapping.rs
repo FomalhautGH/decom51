@@ -177,7 +177,7 @@ impl DeSSAMapping {
                 version,
                 size,
             } => {
-                let ssaop = (*addr, *version, *size);
+                let ssaop = (*addr, *version);
                 let id = *self.ssa_mappings.get(&ssaop)?;
 
                 // TODO: here we are hardcoding the mapping back to the SP register

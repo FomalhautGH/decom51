@@ -114,9 +114,9 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size,
+                size: _,
             } => {
-                let key = (*addr, *version, *size);
+                let key = (*addr, *version);
 
                 self.variable_uses.entry(key).and_modify(|counter| {
                     *counter -= 1;
@@ -222,9 +222,9 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size,
+                size: _,
             } => {
-                let key = (addr, version, size);
+                let key = (addr, version);
                 if !is_iram_addr(addr) && !self.variable_uses.contains_key(&key) {
                     self.dead_instructions.push(loc);
                 }
@@ -320,9 +320,9 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size,
+                size: _,
             } => {
-                self.variable_defs.insert((*addr, *version, *size), loc);
+                self.variable_defs.insert((*addr, *version), loc);
             }
 
             Operand::TempSSAVar { index, version } => {
@@ -344,10 +344,10 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size,
+                size: _,
             } => {
                 self.variable_uses
-                    .entry((*addr, *version, *size))
+                    .entry((*addr, *version))
                     .and_modify(|counter| *counter += 1)
                     .or_insert(1);
             }
