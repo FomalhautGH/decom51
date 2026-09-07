@@ -1,11 +1,13 @@
 use crate::{
     common::{Addr, AddrSpace, BlockId, Ir51, Operand, Phi, TempIndex},
-    lir::format_addr,
+    lir::{Size, format_addr},
     opt::cfg::{BasicBlock, ControlFlowGraph},
 };
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Display, Formatter, Result},
+    hash::{Hash, Hasher},
 };
 
 pub use crate::opt::ssa::chk_algorithm::{CHKAlgorithm, Dominators};
@@ -23,16 +25,38 @@ enum VisitState {
     Exit(Vec<VarKey>),
 }
 
-#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum VarKey {
-    Mem(Addr),       // For classic variables
+    Mem(Addr, Size), // For classic variables
     Temp(TempIndex), // For temporary variables
+}
+
+impl Eq for VarKey {}
+
+impl PartialEq for VarKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (VarKey::Mem(laddr, _), VarKey::Mem(raddr, _)) => laddr == raddr,
+            (VarKey::Temp(lidx), VarKey::Temp(ridx)) => lidx == ridx,
+            (VarKey::Mem(_, _), VarKey::Temp(_)) => false,
+            (VarKey::Temp(_), VarKey::Mem(_, _)) => false,
+        }
+    }
+}
+
+impl Hash for VarKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            VarKey::Mem(addr, _) => addr.hash(state),
+            VarKey::Temp(idx) => idx.hash(state),
+        }
+    }
 }
 
 impl Display for VarKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            VarKey::Mem(addr) => write!(f, "{}", format_addr(*addr)),
+            VarKey::Mem(addr, size) => write!(f, "{}[size {size}]", format_addr(*addr)),
             VarKey::Temp(idx) => write!(f, "t{}", idx),
         }
     }
@@ -180,7 +204,7 @@ impl SSABuilder {
                     _ => unreachable!(),
                 };
 
-                let current_version = Self::get_stack_top_for(stack, VarKey::Mem(addr));
+                let current_version = Self::get_stack_top_for(stack, VarKey::Mem(addr, size));
 
                 phi.incoming.insert(
                     block_id,
@@ -302,7 +326,7 @@ impl SSABuilder {
                 space: AddrSpace::iData,
                 size,
             } => {
-                let key = VarKey::Mem(*addr);
+                let key = VarKey::Mem(*addr, *size);
                 let version = Self::get_stack_top_for(stack, key);
 
                 Operand::SSAVar {
@@ -358,7 +382,7 @@ impl SSABuilder {
                 space: AddrSpace::iData,
                 size,
             } => {
-                let key = VarKey::Mem(*addr);
+                let key = VarKey::Mem(*addr, *size);
                 let version = update(key);
 
                 Operand::SSAVar {
@@ -414,7 +438,9 @@ impl SSABuilder {
         variables: &VarsBlocks,
     ) {
         for (var, worklist) in variables {
-            let VarKey::Mem(var) = var else { continue };
+            let VarKey::Mem(var, size) = var else {
+                continue;
+            };
             let mut worklist: Vec<BlockId> = worklist.iter().copied().collect();
 
             while let Some(block_id) = worklist.pop() {
@@ -445,7 +471,7 @@ impl SSABuilder {
                         operand: Operand::Var {
                             addr: *var,
                             space: AddrSpace::iData,
-                            size: 1,
+                            size: *size,
                         },
                         incoming: HashMap::new(),
                     });
@@ -470,21 +496,21 @@ impl SSABuilder {
                 match *ir {
                     // Addresses
                     Ir51::Move {
-                        dest: Operand::Var { addr, .. },
+                        dest: Operand::Var { addr, size, .. },
                         ..
                     }
                     | Ir51::BinOp {
-                        dest: Operand::Var { addr, .. },
+                        dest: Operand::Var { addr, size, .. },
                         ..
                     }
                     | Ir51::Load {
-                        dest: Operand::Var { addr, .. },
+                        dest: Operand::Var { addr, size, .. },
                         ..
                     }
                     | Ir51::BranchIf {
-                        cond: Operand::Var { addr, .. },
+                        cond: Operand::Var { addr, size, .. },
                         ..
-                    } => insert_var(VarKey::Mem(addr)),
+                    } => insert_var(VarKey::Mem(addr, size)),
 
                     // Temporaries
                     Ir51::BranchIf {

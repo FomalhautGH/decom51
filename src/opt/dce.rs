@@ -114,9 +114,9 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size: _,
+                size,
             } => {
-                let key = (*addr, *version);
+                let key = SSAVar(*addr, *version, *size);
 
                 self.variable_uses.entry(key).and_modify(|counter| {
                     *counter -= 1;
@@ -133,7 +133,7 @@ impl DeadCodeElimination {
                 index: tmp_index,
                 version,
             } => {
-                let key = (*tmp_index, *version);
+                let key = TempSSAVar(*tmp_index, *version);
 
                 self.temporary_uses.entry(key).and_modify(|counter| {
                     *counter -= 1;
@@ -222,16 +222,17 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size: _,
+                size,
             } => {
-                let key = (addr, version);
+                let key = SSAVar(addr, version, size);
                 if !is_iram_addr(addr) && !self.variable_uses.contains_key(&key) {
                     self.dead_instructions.push(loc);
                 }
             }
 
             Operand::TempSSAVar { index, version } => {
-                if !self.temporary_uses.contains_key(&(index, version)) {
+                let key = TempSSAVar(index, version);
+                if !self.temporary_uses.contains_key(&key) {
                     self.dead_instructions.push(loc);
                 }
             }
@@ -320,13 +321,15 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size: _,
+                size,
             } => {
-                self.variable_defs.insert((*addr, *version), loc);
+                self.variable_defs
+                    .insert(SSAVar(*addr, *version, *size), loc);
             }
 
             Operand::TempSSAVar { index, version } => {
-                self.temporary_defs.insert((*index, *version), loc);
+                self.temporary_defs
+                    .insert(TempSSAVar(*index, *version), loc);
             }
 
             Operand::Constant(_) => {}
@@ -344,17 +347,17 @@ impl DeadCodeElimination {
             Operand::SSAVar {
                 addr,
                 version,
-                size: _,
+                size,
             } => {
                 self.variable_uses
-                    .entry((*addr, *version))
+                    .entry(SSAVar(*addr, *version, *size))
                     .and_modify(|counter| *counter += 1)
                     .or_insert(1);
             }
 
             Operand::TempSSAVar { index, version } => {
                 self.temporary_uses
-                    .entry((*index, *version))
+                    .entry(TempSSAVar(*index, *version))
                     .and_modify(|counter| *counter += 1)
                     .or_insert(1);
             }

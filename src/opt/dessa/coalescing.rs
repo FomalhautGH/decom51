@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    common::{BlockId, Ir51, Operand, SSAVar, is_ssa_smaller},
+    common::{BlockId, Ir51, Operand, SSAVar},
     opt::{
         cfg::{BasicBlock, ControlFlowGraph},
         dessa::interference::InterferenceGraph,
@@ -116,9 +116,7 @@ impl VariableCoalescing {
     }
 
     fn replace(&self, op: &mut Operand) {
-        if let Operand::SSAVar { size, .. } = *op
-            && let Some((addr, version)) = self.find_mapping_for(op)
-        {
+        if let Some(SSAVar(addr, version, size)) = self.find_mapping_for(op) {
             *op = Operand::SSAVar {
                 addr,
                 version,
@@ -163,7 +161,7 @@ impl VariableCoalescing {
                 continue;
             };
 
-            if is_ssa_smaller(itf.0, itf.1) {
+            if itf.0 < itf.1 {
                 new_itf.push((itf.0, itf.1));
             } else {
                 new_itf.push((itf.1, itf.0));

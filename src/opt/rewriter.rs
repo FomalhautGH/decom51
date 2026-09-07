@@ -1,5 +1,5 @@
 use crate::{
-    common::{Constant, Ir51, Operand, Phi},
+    common::{Constant, Ir51, Operand, Phi, TempSSAVar},
     opt::{
         cfg::{BasicBlock, ControlFlowGraph},
         const_propagation::{SSAState, TemporaryStates, VariableStates},
@@ -99,7 +99,7 @@ impl<'a> Rewriter<'a> {
                 *operand = Operand::Constant(v);
             }
         } else if let Operand::TempSSAVar { index, version } = operand {
-            let state = self.known_temps[&(*index, *version)];
+            let state = self.known_temps[&TempSSAVar(*index, *version)];
             if let SSAState::Constant(v) = state {
                 *operand = Operand::Constant(v);
             }
@@ -119,7 +119,7 @@ impl<'a> Rewriter<'a> {
         } else {
             match operand {
                 Operand::TempSSAVar { index, version } => {
-                    let state = self.known_temps[&(*index, *version)];
+                    let state = self.known_temps[&TempSSAVar(*index, *version)];
                     if let SSAState::Constant(v) = state {
                         Some(v)
                     } else {

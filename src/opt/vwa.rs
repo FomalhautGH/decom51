@@ -42,7 +42,7 @@ impl VariableWidthAggregation {
     pub fn execute(&mut self, cfg: &mut ControlFlowGraph) {
         self.aggregate_variables(cfg);
         self.aggregate_operations(cfg);
-        // cfg.remove_useless_irs();
+        cfg.remove_useless_irs();
 
         if cfg!(debug_assertions) {
             println!("======================== VAR WIDTH AGGREGATION ========================");
@@ -56,13 +56,13 @@ impl VariableWidthAggregation {
 
     // Phase 1: Multi-Byte Variable Aggregation (Arithmetic & Initializations)
     fn aggregate_variables(&mut self, cfg: &mut ControlFlowGraph) {
-        let mut modified = true;
-        while modified {
-            modified = false;
+        let mut has_modified = true;
+        while has_modified {
+            has_modified = false;
 
             for block in cfg.blocks.values_mut() {
-                modified |= self.aggregate_intra_block(block);
-                modified |= self.aggregate_inter_block(block);
+                has_modified |= self.aggregate_intra_block(block);
+                has_modified |= self.aggregate_inter_block(block);
             }
         }
     }
@@ -229,9 +229,9 @@ impl VariableWidthAggregation {
             unreachable!()
         };
 
-        let high_lhs_op = high_lhs_init;
+        let _high_lhs_addr = high_lhs_init.to_var_addr()?;
         let (high_dest_op, end_idx) = Self::find_next_usage(&high_dest, irs, high_addc_idx)?;
-        let (_, _) = (high_lhs_op.to_var_addr()?, high_dest_op.to_var_addr()?);
+        let _high_dest_addr = high_dest_op.to_var_addr()?;
 
         let low_add_idx = Self::find_last_add(irs, high_addc_idx)?;
         let Ir51::BinOp {
@@ -247,7 +247,8 @@ impl VariableWidthAggregation {
         let low_rhs_addr = low_rhs.to_var_addr()?;
         let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_add_idx)?;
         let (low_dest_op, _) = Self::find_next_usage(&accumulator, irs, low_add_idx)?;
-        let (low_lhs_addr, low_dest_addr) = (low_lhs_op.to_var_addr()?, low_dest_op.to_var_addr()?);
+        let low_lhs_addr = low_lhs_op.to_var_addr()?;
+        let low_dest_addr = low_dest_op.to_var_addr()?;
 
         let op = BinOp::Add;
         let lhs = Operand::Var {
@@ -302,9 +303,9 @@ impl VariableWidthAggregation {
     fn try_fusing_subb_constant(
         irs: &[Ir51],
         low_subb_idx: usize,
-        constval: Constant,
+        low_rhs_const: Constant,
     ) -> Option<FusedOperation> {
-        let carry = Operand::Var {
+        let carry_flag = Operand::Var {
             addr: 0xD7,
             space: AddrSpace::iData,
             size: 1,
@@ -319,7 +320,6 @@ impl VariableWidthAggregation {
             unreachable!()
         };
 
-        let rhs_low_const = constval;
         let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_subb_idx)?;
         let low_lhs_addr = low_lhs_op.to_var_addr()?;
 
@@ -333,9 +333,9 @@ impl VariableWidthAggregation {
             unreachable!()
         };
 
-        let rhs_high_const = high_rhs.to_const_value()?;
-        let (high_lhs_op, _) = Self::find_last_initialization(&low_lhs, irs, high_subb_idx)?;
-        let _ = high_lhs_op.to_var_addr()?;
+        let high_rhs_const = high_rhs.to_const_value()?;
+        let (high_lhs_init_op, _) = Self::find_last_initialization(&low_lhs, irs, high_subb_idx)?;
+        let _high_lhs_addr = high_lhs_init_op.to_var_addr()?;
 
         let op = BinOp::Lt;
         let lhs = Operand::Var {
@@ -344,14 +344,14 @@ impl VariableWidthAggregation {
             size: 2,
         };
 
-        let rhs = Operand::Constant((rhs_high_const << 8) | rhs_low_const);
+        let rhs = Operand::Constant((high_rhs_const << 8) | low_rhs_const);
         let end_idx = high_subb_idx;
 
         Some(FusedOperation {
             start_idx,
             end_idx,
             op,
-            dest: carry,
+            dest: carry_flag,
             lhs,
             rhs,
         })
@@ -360,7 +360,7 @@ impl VariableWidthAggregation {
     fn try_fusing_subb_variable(
         irs: &[Ir51],
         low_subb_idx: usize,
-        varaddr: Addr,
+        low_rhs_var_addr: Addr,
     ) -> Option<FusedOperation> {
         let Ir51::BinOp {
             op: BinOp::Subb,
@@ -372,17 +372,19 @@ impl VariableWidthAggregation {
             unreachable!()
         };
 
-        let low_rhs_addr = varaddr;
+        let low_rhs_addr = low_rhs_var_addr;
 
         let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_subb_idx)?;
         let (low_dest_op, _) = Self::find_next_usage(&low_dest, irs, low_subb_idx)?;
-        let (low_lhs_addr, low_dest_addr) = (low_lhs_op.to_var_addr()?, low_dest_op.to_var_addr()?);
+        let low_lhs_addr = low_lhs_op.to_var_addr()?;
+        let low_dest_addr = low_dest_op.to_var_addr()?;
 
         let high_subb_idx = Self::find_adjacent_subb(irs, low_subb_idx)?;
 
         let (high_lhs_op, _) = Self::find_last_initialization(&low_lhs, irs, high_subb_idx)?;
         let (high_dest_op, end_idx) = Self::find_next_usage(&low_dest, irs, high_subb_idx)?;
-        let (_, _) = (high_lhs_op.to_var_addr()?, high_dest_op.to_var_addr()?);
+        let _high_lhs_addr = high_lhs_op.to_var_addr()?;
+        let _high_dest_addr = high_dest_op.to_var_addr()?;
 
         let op = BinOp::Sub;
         let lhs = Operand::Var {
@@ -424,8 +426,12 @@ impl VariableWidthAggregation {
         };
 
         match subb_rhs {
-            Operand::Constant(val) => Self::try_fusing_subb_constant(irs, subb_idx, val),
-            Operand::Var { addr, .. } => Self::try_fusing_subb_variable(irs, subb_idx, addr),
+            Operand::Constant(const_val) => {
+                Self::try_fusing_subb_constant(irs, subb_idx, const_val)
+            }
+            Operand::Var { addr: var_addr, .. } => {
+                Self::try_fusing_subb_variable(irs, subb_idx, var_addr)
+            }
             _ => unreachable!(),
         }
     }
@@ -452,7 +458,8 @@ impl VariableWidthAggregation {
         let low_rhs_addr = low_rhs.to_var_addr()?;
         let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_op_idx)?;
         let (low_dest_op, _) = Self::find_next_usage(&low_dest, irs, low_op_idx)?;
-        let (low_lhs_addr, low_dest_addr) = (low_lhs_op.to_var_addr()?, low_dest_op.to_var_addr()?);
+        let low_lhs_addr = low_lhs_op.to_var_addr()?;
+        let low_dest_addr = low_dest_op.to_var_addr()?;
 
         let high_op_idx = Self::find_adjacent_bitwise(irs, low_op_idx, target_op)?;
 
@@ -469,8 +476,8 @@ impl VariableWidthAggregation {
         let high_rhs_addr = high_rhs.to_var_addr()?;
         let (high_lhs_op, _) = Self::find_last_initialization(&high_lhs, irs, high_op_idx)?;
         let (high_dest_op, end_idx) = Self::find_next_usage(&high_dest, irs, high_op_idx)?;
-        let (high_lhs_addr, high_dest_addr) =
-            (high_lhs_op.to_var_addr()?, high_dest_op.to_var_addr()?);
+        let high_lhs_addr = high_lhs_op.to_var_addr()?;
+        let high_dest_addr = high_dest_op.to_var_addr()?;
 
         if low_lhs_addr + 1 != high_lhs_addr
             || low_rhs_addr + 1 != high_rhs_addr
@@ -521,15 +528,15 @@ impl VariableWidthAggregation {
 
         let high_lhs_addr = high_lhs.to_var_addr()?;
         let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, or_idx)?;
-        let consumer_binop = Self::find_next_binop_usage(&or_dest, irs, or_idx)?;
+        let consumer_op = Self::find_next_binop_usage(&or_dest, irs, or_idx)?;
         let low_lhs_addr = low_lhs_op.to_var_addr()?;
 
         (low_lhs_addr + 1 == high_lhs_addr).then_some(bool::default())?;
 
-        let op = consumer_binop.op;
-        let rhs = consumer_binop.rhs;
-        let dest = consumer_binop.dest;
-        let end_idx = consumer_binop.index;
+        let op = consumer_op.op;
+        let rhs = consumer_op.rhs;
+        let dest = consumer_op.dest;
+        let end_idx = consumer_op.index;
         let lhs = Operand::Var {
             addr: low_lhs_addr,
             space: AddrSpace::iData,
@@ -568,6 +575,15 @@ impl VariableWidthAggregation {
         }
     }
 
+    fn as_constant(operand: &Operand, irs: &[Ir51], search_from_idx: usize) -> Option<Constant> {
+        if let Operand::Constant(_) = *operand {
+            operand.to_const_value()
+        } else {
+            let (src_op, _) = Self::find_last_initialization(operand, irs, search_from_idx)?;
+            src_op.to_const_value()
+        }
+    }
+
     fn search_nbit_initialization(&self, irs: &[Ir51]) -> Option<FusedInitialization> {
         for (ir_idx, ir) in irs.iter().enumerate() {
             if let Ir51::Move {
@@ -577,50 +593,54 @@ impl VariableWidthAggregation {
                         space: addr_space,
                         ..
                     },
-                src: Operand::Constant(low_const),
+                src,
             } = ir
                 && self.fused_addresses.contains(low_var_addr)
-                && let Some((high_const, end_idx)) =
-                    Self::find_next_initialization(irs, *low_var_addr, ir_idx)
             {
-                let start_idx = ir_idx;
-                let dest = Operand::Var {
-                    addr: *low_var_addr,
-                    space: *addr_space,
-                    size: 2,
-                };
+                let low_const = Self::as_constant(src, irs, ir_idx)?;
 
-                let src = Operand::Constant((high_const << 8) | low_const);
-                return Some(FusedInitialization {
-                    start_idx,
-                    end_idx,
-                    dest,
-                    src,
-                });
+                if let Some((high_const, end_idx)) =
+                    Self::find_next_initialization_of_addr(low_var_addr + 1, irs, ir_idx)
+                {
+                    let start_idx = ir_idx;
+                    let dest = Operand::Var {
+                        addr: *low_var_addr,
+                        space: *addr_space,
+                        size: 2,
+                    };
+
+                    let src = Operand::Constant((high_const << 8) | low_const);
+                    return Some(FusedInitialization {
+                        start_idx,
+                        end_idx,
+                        dest,
+                        src,
+                    });
+                }
             }
         }
 
         None
     }
 
-    fn find_next_initialization(
+    fn find_next_initialization_of_addr(
+        target_addr: Addr,
         irs: &[Ir51],
-        low_var_addr: Addr,
-        after_idx: usize,
+        search_after_idx: usize,
     ) -> Option<(Constant, usize)> {
-        let expected_high_addr = low_var_addr + 1;
-        for (ir_idx, ir) in irs.iter().enumerate().skip(after_idx + 1) {
+        for (ir_idx, ir) in irs.iter().enumerate().skip(search_after_idx + 1) {
             if let Ir51::Move {
                 dest:
                     Operand::Var {
                         addr: candidate_high_addr,
                         ..
                     },
-                src: Operand::Constant(high_const),
+                src,
             } = ir
-                && *candidate_high_addr == expected_high_addr
+                && *candidate_high_addr == target_addr
             {
-                return Some((*high_const, ir_idx));
+                let high_const = Self::as_constant(src, irs, ir_idx)?;
+                return Some((high_const, ir_idx));
             }
         }
 
@@ -629,12 +649,12 @@ impl VariableWidthAggregation {
 
     // Phase 2: Relational Condition / Operation Aggregation
     fn aggregate_operations(&mut self, cfg: &mut ControlFlowGraph) {
-        let mut modified = true;
-        while modified {
-            modified = false;
+        let mut has_modified = true;
+        while has_modified {
+            has_modified = false;
 
             for block in cfg.blocks.values_mut() {
-                modified |= self.aggregate_ops(block);
+                has_modified |= self.aggregate_ops(block);
             }
         }
     }
@@ -671,13 +691,13 @@ impl VariableWidthAggregation {
             // TODO: dont hardcode register addresses
             if let Ir51::Move {
                 dest: Operand::Var { addr: 0xe0, .. },
-                src: Operand::Constant(constant_val),
+                src: Operand::Constant(threshold_const_val),
             } = load_const_ir
                 && let Ir51::BinOp {
                     op: BinOp::Add,
                     dest: Operand::Var { addr: 0xe0, .. },
                     lhs: Operand::Var { addr: 0xe0, .. },
-                    rhs: tested_var,
+                    rhs: counter_var,
                 } = add_var_ir
                 && let Ir51::BinOp {
                     op: BinOp::Ne,
@@ -691,8 +711,8 @@ impl VariableWidthAggregation {
                     end_idx: start_idx + window_size - 1,
                     op: BinOp::Ge,
                     dest: Operand::Temp(0),
-                    lhs: tested_var,
-                    rhs: Operand::Constant(0u8.wrapping_sub(constant_val as u8).into()),
+                    lhs: counter_var,
+                    rhs: Operand::Constant(0u8.wrapping_sub(threshold_const_val as u8).into()),
                 });
             };
         }
@@ -704,9 +724,9 @@ impl VariableWidthAggregation {
     fn find_last_initialization(
         target_op: &Operand,
         irs: &[Ir51],
-        before_idx: usize,
+        search_before_idx: usize,
     ) -> Option<(Operand, usize)> {
-        for (ir_idx, ir) in irs.iter().enumerate().take(before_idx).rev() {
+        for (ir_idx, ir) in irs.iter().enumerate().take(search_before_idx).rev() {
             match ir {
                 Ir51::Move { dest, src } if dest == target_op => return Some((*src, ir_idx)),
                 _ => {}
@@ -720,9 +740,9 @@ impl VariableWidthAggregation {
     fn find_next_usage(
         target_op: &Operand,
         irs: &[Ir51],
-        start_idx: usize,
+        search_start_idx: usize,
     ) -> Option<(Operand, usize)> {
-        for (ir_idx, ir) in irs.iter().enumerate().skip(start_idx) {
+        for (ir_idx, ir) in irs.iter().enumerate().skip(search_start_idx) {
             match ir {
                 Ir51::Move { dest, src } if src == target_op => return Some((*dest, ir_idx)),
                 _ => {}
@@ -735,9 +755,9 @@ impl VariableWidthAggregation {
     fn find_next_binop_usage(
         target_op: &Operand,
         irs: &[Ir51],
-        start_idx: usize,
+        search_start_idx: usize,
     ) -> Option<BinOpUsage> {
-        for (ir_idx, ir) in irs.iter().enumerate().skip(start_idx + 1) {
+        for (ir_idx, ir) in irs.iter().enumerate().skip(search_start_idx + 1) {
             match ir {
                 Ir51::BinOp { op, dest, lhs, rhs } if lhs == target_op => {
                     return Some(BinOpUsage {
@@ -754,8 +774,8 @@ impl VariableWidthAggregation {
         None
     }
 
-    fn find_last_add(irs: &[Ir51], before_idx: usize) -> Option<usize> {
-        for (ir_idx, ir) in irs.iter().enumerate().take(before_idx).rev() {
+    fn find_last_add(irs: &[Ir51], search_before_idx: usize) -> Option<usize> {
+        for (ir_idx, ir) in irs.iter().enumerate().take(search_before_idx).rev() {
             if let Ir51::BinOp { op: BinOp::Add, .. } = ir {
                 return Some(ir_idx);
             }

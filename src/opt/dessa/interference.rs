@@ -1,5 +1,5 @@
 use crate::{
-    common::{BlockId, Ir51, Operand, Phi, SSAVar, is_ssa_smaller},
+    common::{BlockId, Ir51, Operand, Phi, SSAVar},
     lir::format_addr,
     opt::{
         cfg::{BasicBlock, ControlFlowGraph},
@@ -91,7 +91,7 @@ impl<'a> Interference<'a> {
                 let ssavar1 = phi_destinations[i].to_ssavar().unwrap();
                 let ssavar2 = phi_destinations[j].to_ssavar().unwrap();
 
-                if is_ssa_smaller(ssavar1, ssavar2) {
+                if ssavar1 < ssavar2 {
                     self.interferences.insert((ssavar1, ssavar2));
                 } else {
                     self.interferences.insert((ssavar2, ssavar1));
@@ -148,7 +148,7 @@ impl<'a> Interference<'a> {
         liveset.remove(&dest);
 
         for ssavar in liveset.iter() {
-            if is_ssa_smaller(dest, *ssavar) {
+            if dest < *ssavar {
                 self.interferences.insert((dest, *ssavar));
             } else {
                 self.interferences.insert((*ssavar, dest));
@@ -166,7 +166,7 @@ impl<'a> Interference<'a> {
         // the one in analyze_phis
         for i in &liveset {
             for j in &liveset {
-                if is_ssa_smaller(*i, *j) {
+                if *i < *j {
                     self.interferences.insert((*i, *j));
                 }
             }

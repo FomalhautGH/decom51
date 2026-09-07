@@ -7,7 +7,6 @@ use crate::{
 use std::collections::{HashMap, HashSet};
 
 // Local set for every block
-
 pub type LocalSet = HashMap<BlockId, HashSet<SSAVar>>;
 
 #[derive(Default)]
@@ -174,8 +173,12 @@ impl Liveness {
     fn save_def(&mut self, operand: &Operand, blockid: BlockId) {
         // TODO: We could provably add a method to extract the key from a valid operand
         match operand {
-            Operand::SSAVar { addr, version, .. } => {
-                let key = (*addr, *version);
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                let key = SSAVar(*addr, *version, *size);
                 self.def_sets.entry(blockid).or_default().insert(key);
             }
 
@@ -192,8 +195,12 @@ impl Liveness {
 
     fn save_use(&mut self, operand: &Operand, blockid: BlockId) {
         match operand {
-            Operand::SSAVar { addr, version, .. } => {
-                let key = (*addr, *version);
+            Operand::SSAVar {
+                addr,
+                version,
+                size,
+            } => {
+                let key = SSAVar(*addr, *version, *size);
 
                 let def = self.def_sets.entry(blockid).or_default().contains(&key);
                 if !def {

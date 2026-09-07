@@ -1,10 +1,12 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result},
+    hash::Hash,
+    hash::Hasher,
 };
 
 pub use crate::lir::{
-    Addr, AddrSpace, BinOp, Constant, Ir51, Operand, Register, TempIndex, VarId, Version,
+    Addr, AddrSpace, BinOp, Constant, Ir51, Operand, Register, Size, TempIndex, VarId, Version,
 };
 
 pub type BlockId = usize;
@@ -22,12 +24,36 @@ pub struct Phi {
     pub incoming: Incoming,
 }
 
-pub type SSAVar = (Addr, Version);
-pub type TempSSAVar = (TempIndex, Version);
+#[derive(Debug, Clone, Copy, PartialOrd, Ord)]
+pub struct SSAVar(pub Addr, pub Version, pub Size);
 
-// TODO: Maybe is it bettere to have SSAVar as a struct and implement PartialOrd
-pub fn is_ssa_smaller(a: SSAVar, b: SSAVar) -> bool {
-    if a.0 == b.0 { a.1 < b.1 } else { a.0 < b.0 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TempSSAVar(pub TempIndex, pub Version);
+
+impl Eq for SSAVar {}
+impl PartialEq for SSAVar {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0 && self.1 == other.1
+    }
+}
+
+impl Hash for SSAVar {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+        self.1.hash(state);
+    }
+}
+
+impl Display for SSAVar {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}_{}", crate::lir::format_addr(self.0), self.1)
+    }
+}
+
+impl Display for TempSSAVar {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "t{}_{}", self.0, self.1)
+    }
 }
 
 impl Display for Phi {

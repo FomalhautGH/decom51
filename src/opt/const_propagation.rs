@@ -18,8 +18,8 @@ enum SSAKey {
 impl Display for SSAKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            SSAKey::Var((addr, version, ..)) => write!(f, "{}_{}", format_addr(*addr), version),
-            SSAKey::Temp((idx, version)) => write!(f, "t{}_{}", idx, version),
+            SSAKey::Var(var) => write!(f, "{var}"),
+            SSAKey::Temp(temp) => write!(f, "{temp}"),
         }
     }
 }
@@ -180,14 +180,15 @@ impl ConstPropagation {
             Operand::SSAVar {
                 addr,
                 version,
-                size: _,
+                size,
             } => {
                 let initial_state = if *version == 0 {
                     SSAState::Bottom
                 } else {
                     SSAState::Top
                 };
-                self.known_values.insert((*addr, *version), initial_state);
+                self.known_values
+                    .insert(SSAVar(*addr, *version, *size), initial_state);
             }
 
             Operand::TempSSAVar { index, version } => {
@@ -196,7 +197,8 @@ impl ConstPropagation {
                 } else {
                     SSAState::Top
                 };
-                self.known_temps.insert((*index, *version), initial_state);
+                self.known_temps
+                    .insert(TempSSAVar(*index, *version), initial_state);
             }
 
             // We work on constant later
@@ -497,7 +499,7 @@ impl ConstPropagation {
         let Operand::SSAVar {
             addr,
             version: actual_version,
-            size: _,
+            size,
         } = phi.operand
         else {
             unreachable!()
@@ -505,18 +507,24 @@ impl ConstPropagation {
 
         for (pred_block_id, incoming) in &phi.incoming {
             if self.reachable_blocks.contains(pred_block_id) {
-                self.delta_phi(addr, actual_version, incoming.extract_ssa_version());
+                self.delta_phi(addr, actual_version, incoming.extract_ssa_version(), size);
             }
         }
     }
 
-    fn delta_phi(&mut self, addr: Addr, actual_version: usize, incoming_version: usize) {
+    fn delta_phi(
+        &mut self,
+        addr: Addr,
+        actual_version: usize,
+        incoming_version: usize,
+        size: usize,
+    ) {
         if actual_version == incoming_version {
             return;
         }
 
-        let actual_key = &(addr, actual_version);
-        let incoming_key = &(addr, incoming_version);
+        let actual_key = &SSAVar(addr, actual_version, size);
+        let incoming_key = &SSAVar(addr, incoming_version, size);
 
         let [Some(val), Some(arg)] = self
             .known_values
@@ -548,7 +556,8 @@ impl ConstPropagation {
 
         if &result_state != val {
             *val = result_state;
-            self.ssa_worklist.push(SSAKey::Var((addr, actual_version)));
+            self.ssa_worklist
+                .push(SSAKey::Var(SSAVar(addr, actual_version, size)));
         }
     }
 
@@ -580,9 +589,9 @@ impl ConstPropagation {
             Operand::SSAVar {
                 addr,
                 version,
-                size: _,
-            } => SSAKey::Var((*addr, *version)),
-            Operand::TempSSAVar { index, version } => SSAKey::Temp((*index, *version)),
+                size,
+            } => SSAKey::Var(SSAVar(*addr, *version, *size)),
+            Operand::TempSSAVar { index, version } => SSAKey::Temp(TempSSAVar(*index, *version)),
             _ => unreachable!("{op:?}"),
         }
     }
