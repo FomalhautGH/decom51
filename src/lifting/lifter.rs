@@ -652,6 +652,11 @@ impl Lifter {
 
         let rhs_operand: Operand = match rhs_arg {
             Argument::Data8(imm8) => Operand::Constant(imm8.into()),
+            Argument::IramAddress(addr) => Operand::Var {
+                addr: addr.into(),
+                space: AddrSpace::iData,
+                size: 1,
+            },
             _ => todo!("{rhs_arg:?}"),
         };
 

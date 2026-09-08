@@ -26,7 +26,7 @@ pub enum Hir51 {
     IfElse {
         cond: Expr,
         true_body: Vec<Hir51>,
-        false_body: Option<Vec<Hir51>>,
+        false_body: Vec<Hir51>,
     },
 
     Goto {
@@ -108,9 +108,9 @@ impl Hir51 {
                 for child in true_body {
                     child.fmt_recursive(f, indent + 1)?;
                 }
-                if let Some(fb) = false_body {
+                if !false_body.is_empty() {
                     writeln!(f, "{}}} else {{", indent_str)?;
-                    for child in fb {
+                    for child in false_body {
                         child.fmt_recursive(f, indent + 1)?;
                     }
                 }

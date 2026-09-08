@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     common::BlockId,
-    opt::cfg::{BasicBlock, ControlFlowGraph},
+    opt::{
+        cfg::{BasicBlock, ControlFlowGraph},
+        ssa::CHKAlgorithm,
+    },
 };
 
 // Represents a back edge from a latch block (source) to a loop header (target)
@@ -32,72 +35,31 @@ impl LoopRecovery {
     }
 
     // Phase 1: Dominator Data-flow Analysis
-    // Computes all dominators for every basic block using iterative data-flow analysis
+    // Computes all dominators for every basic block climing back the immediate dominators tree.
     fn compute_dominators(&self, cfg: &ControlFlowGraph) -> DominatorMap {
         let mut dominators = DominatorMap::new();
-        self.init_dominators(cfg, &mut dominators);
 
-        let mut changed = true;
-        while changed {
-            changed = self.propagate_dominators(cfg, &mut dominators);
+        let blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
+        let immidiate_dominators = CHKAlgorithm::execute(&blocks);
+
+        for block in blocks {
+            let mut block_dominators = HashSet::new();
+            block_dominators.insert(block.id);
+
+            let mut it = block.id;
+            while let Some(idom) = immidiate_dominators.get(&it) {
+                if it == *idom {
+                    break;
+                }
+
+                block_dominators.insert(*idom);
+                it = *idom;
+            }
+
+            dominators.insert(block.id, block_dominators);
         }
 
         dominators
-    }
-
-    fn init_dominators(&self, cfg: &ControlFlowGraph, dominators: &mut DominatorMap) {
-        let block_ids: Vec<BlockId> = cfg.blocks.keys().copied().collect();
-        self.add_dominator(cfg.start_block, cfg.start_block, dominators);
-
-        for &block_id in &block_ids {
-            if block_id != cfg.start_block {
-                for &candidate_id in &block_ids {
-                    self.add_dominator(block_id, candidate_id, dominators);
-                }
-            }
-        }
-    }
-
-    fn propagate_dominators(&self, cfg: &ControlFlowGraph, dominators: &mut DominatorMap) -> bool {
-        let mut changed = false;
-
-        for block in cfg.blocks.values() {
-            changed |= self.update_block_dominators(block, dominators).is_some();
-        }
-
-        changed
-    }
-
-    fn update_block_dominators(
-        &self,
-        block: &BasicBlock,
-        dominators: &mut DominatorMap,
-    ) -> Option<()> {
-        let mut pred_iter = block.predecessors.iter();
-        let first_pred = pred_iter.next()?;
-        let mut current_dominators = dominators[first_pred].clone();
-
-        for pred in pred_iter {
-            let pred_doms = &dominators[pred];
-            current_dominators.retain(|d| pred_doms.contains(d));
-        }
-
-        current_dominators.insert(block.id);
-        if dominators[&block.id] != current_dominators {
-            dominators.insert(block.id, current_dominators);
-            Some(())
-        } else {
-            None
-        }
-    }
-
-    fn add_dominator(
-        &self,
-        block_id: BlockId,
-        dominator_id: BlockId,
-        dominators: &mut DominatorMap,
-    ) {
-        dominators.entry(block_id).or_default().insert(dominator_id);
     }
 
     // Phase 2: Back-edge Identification

@@ -1,4 +1,4 @@
-use crate::common::{SSAVar, TempSSAVar};
+use crate::common::SSAVar;
 use std::fmt::{Display, Formatter, Result};
 
 #[allow(clippy::upper_case_acronyms)]
@@ -106,14 +106,6 @@ impl Operand {
         } = self
         {
             Some(SSAVar(addr, version, size))
-        } else {
-            None
-        }
-    }
-
-    pub fn to_temp_ssavar(self) -> Option<TempSSAVar> {
-        if let Operand::TempSSAVar { index, version } = self {
-            Some(TempSSAVar(index, version))
         } else {
             None
         }
