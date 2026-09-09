@@ -3,10 +3,11 @@ use crate::{
     hir::Hir51,
     opt::{
         call_recovery::CallRecovery, cfg_restorer::CFGRestorer, cle::ControlLogicExtraction,
-        const_propagation::ConstPropagation, dbe::DeadBlockElimination, dce::DeadCodeElimination,
-        dessa::DeSSA, ebe::EmptyBlockElimination, expr_aggregation::ExprAggregation,
-        loop_recovery::LoopRecovery, loop_structuring::LoopStructuring, rewriter::Rewriter,
-        ssa::SSABuilder, structured_cfg::StructuredCFG, vwa::VariableWidthAggregation,
+        cond_structuring::ConditionStructuring, const_propagation::ConstPropagation,
+        dbe::DeadBlockElimination, dce::DeadCodeElimination, dessa::DeSSA,
+        ebe::EmptyBlockElimination, expr_aggregation::ExprAggregation, loop_recovery::LoopRecovery,
+        loop_structuring::LoopStructuring, rewriter::Rewriter, ssa::SSABuilder,
+        structured_cfg::StructuredCFG, vwa::VariableWidthAggregation,
     },
 };
 
@@ -14,6 +15,7 @@ mod call_recovery;
 mod cfg;
 mod cfg_restorer;
 mod cle;
+mod cond_structuring;
 mod const_propagation;
 mod dbe;
 mod dce;
@@ -74,6 +76,9 @@ impl Optimizer {
 
         let mut ls = LoopStructuring::new(&structured_cfg);
         ls.execute(&mut structured_cfg, loop_tree);
+
+        let mut cs = ConditionStructuring::default();
+        cs.execute(&mut structured_cfg);
 
         let mut cle = ControlLogicExtraction::default();
         cle.execute(structured_cfg);

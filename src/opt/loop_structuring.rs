@@ -58,9 +58,9 @@ impl LoopStructuring {
             id: macro_block_id,
             successors: successors.into_iter().collect(),
             predecessors: predecessors.into_iter().collect(),
-            kind: BlockKind::Macro {
+            kind: BlockKind::Loop {
                 header: Box::new(header),
-                blocks: nested_blocks,
+                body: nested_blocks,
             },
         };
 

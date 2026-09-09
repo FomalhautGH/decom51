@@ -33,8 +33,22 @@ impl ControlLogicExtraction {
     fn extract_block(&self, block: StructuredBlock) -> Vec<Hir51> {
         match block.kind {
             BlockKind::Flat(mirs) => self.extract_flat_block(mirs),
-            BlockKind::Macro { header, blocks } => self.extract_macro_block(*header, blocks),
+            BlockKind::Loop { header, body } => self.extract_loop_block(*header, body),
+            BlockKind::Condition {
+                condition,
+                true_body,
+                false_body,
+            } => self.extract_condition_block(*condition, true_body, false_body),
         }
+    }
+
+    fn extract_condition_block(
+        &self,
+        condition: StructuredBlock,
+        true_body: Vec<StructuredBlock>,
+        false_body: Vec<StructuredBlock>,
+    ) -> Vec<Hir51> {
+        todo!()
     }
 
     fn extract_flat_block(&self, mirs: Vec<Mir51>) -> Vec<Hir51> {
@@ -47,10 +61,10 @@ impl ControlLogicExtraction {
         hirs
     }
 
-    fn extract_macro_block(
+    fn extract_loop_block(
         &self,
         header: StructuredBlock,
-        body_blocks: Vec<StructuredBlock>,
+        body: Vec<StructuredBlock>,
     ) -> Vec<Hir51> {
         let BlockKind::Flat(header_mirs) = header.kind else {
             unreachable!()
@@ -61,7 +75,7 @@ impl ControlLogicExtraction {
         let mut loop_body = Vec::new();
         let mut body_block_ids = HashSet::new();
 
-        for block in body_blocks {
+        for block in body {
             body_block_ids.insert(block.id);
             loop_body.extend(self.extract_block(block));
         }

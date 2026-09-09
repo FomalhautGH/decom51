@@ -10,7 +10,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-pub use crate::opt::ssa::chk_algorithm::{CHKAlgorithm, Dominators};
+pub use crate::opt::ssa::chk_algorithm::{CHKAlgorithm, Dominators, GraphNode};
 
 mod chk_algorithm;
 
@@ -76,18 +76,21 @@ type VersionStack = HashMap<VarKey, Vec<usize>>;
 
 impl SSABuilder {
     pub fn build(cfg: &mut ControlFlowGraph) {
+        let blocks: Vec<GraphNode> = cfg.blocks.values().map(Into::into).collect();
+        let immediate_dominators = CHKAlgorithm::execute(&blocks, cfg.start_block);
+
         let shared_blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
-        let immidiate_dominators = CHKAlgorithm::execute(&shared_blocks);
-        let dominator_frontiers = Self::calculate_frontiers(&immidiate_dominators, &shared_blocks);
+        let dominator_frontiers = Self::calculate_frontiers(&immediate_dominators, &shared_blocks);
+
         let variables = Self::find_variables(&shared_blocks);
 
         Self::place_phis(&mut cfg.blocks, &dominator_frontiers, &variables);
-        Self::ssa(cfg, &immidiate_dominators);
+        Self::ssa(cfg, &immediate_dominators);
 
         if cfg!(debug_assertions) {
             println!("======================== SSA ========================");
             println!("Immediate dominators:");
-            let mut sorted_idoms: Vec<(&BlockId, &BlockId)> = immidiate_dominators.iter().collect();
+            let mut sorted_idoms: Vec<(&BlockId, &BlockId)> = immediate_dominators.iter().collect();
             sorted_idoms.sort_by_key(|e| e.0);
             for (block, idom) in sorted_idoms {
                 println!("  Block_{} is dominated by Block_{}", block, idom);

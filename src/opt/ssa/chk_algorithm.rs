@@ -1,20 +1,69 @@
-use crate::{common::BlockId, opt::cfg::BasicBlock};
+use crate::{
+    common::BlockId,
+    opt::{cfg::BasicBlock, structured_cfg::StructuredBlock},
+};
 use std::collections::HashMap;
 
 pub type Dominators = HashMap<BlockId, BlockId>;
 
+pub struct GraphNode<'a> {
+    pub id: &'a BlockId,
+    pub successors: &'a Vec<BlockId>,
+    pub predecessors: &'a Vec<BlockId>,
+}
+
+impl<'a> From<&'a BasicBlock> for GraphNode<'a> {
+    fn from(block: &'a BasicBlock) -> Self {
+        Self {
+            id: &block.id,
+            successors: &block.successors,
+            predecessors: &block.predecessors,
+        }
+    }
+}
+
+impl<'a> From<&'a StructuredBlock> for GraphNode<'a> {
+    fn from(block: &'a StructuredBlock) -> Self {
+        Self {
+            id: &block.id,
+            successors: &block.successors,
+            predecessors: &block.predecessors,
+        }
+    }
+}
+
+type NodeEdges<'a> = (&'a BlockId, &'a Vec<BlockId>, &'a Vec<BlockId>);
+
+impl<'a> From<NodeEdges<'a>> for GraphNode<'a> {
+    fn from((id, successors, predecessors): NodeEdges<'a>) -> Self {
+        Self {
+            id,
+            successors,
+            predecessors,
+        }
+    }
+}
+
 pub struct CHKAlgorithm;
 
-// Cooper-Harvey-Kennedy algorithm for calculating the immidiate dominators of the basic blocks
+// Cooper-Harvey-Kennedy algorithm for calculating the immediate dominators of the basic blocks
 impl CHKAlgorithm {
-    pub fn execute(blocks: &[&BasicBlock]) -> Dominators {
-        let id_to_idx: Dominators = blocks
+    pub fn execute(blocks: &[GraphNode], entry_id: BlockId) -> Dominators {
+        let mut entry_index = None;
+        let id_to_idx: HashMap<BlockId, usize> = blocks
             .iter()
             .enumerate()
-            .map(|(idx, b)| (b.id, idx))
+            .map(|(idx, b)| {
+                if *b.id == entry_id {
+                    entry_index = Some(idx);
+                }
+
+                (*b.id, idx)
+            })
             .collect();
 
-        let entry_index = *id_to_idx.get(&0).expect("Entry block with ID 0 not found");
+        let entry_index =
+            entry_index.expect(&format!("Entry block with ID {entry_id} was not found"));
 
         let mut post_order = Vec::new();
         let mut visited = vec![false; blocks.len()];
@@ -47,7 +96,7 @@ impl CHKAlgorithm {
                 let block = &blocks[block_idx];
                 let mut new_idom = None;
 
-                for &p_id in &block.predecessors {
+                for &p_id in block.predecessors {
                     if let Some(&p_idx) = id_to_idx.get(&p_id)
                         && idom[p_idx].is_some()
                     {
@@ -57,7 +106,7 @@ impl CHKAlgorithm {
                 }
 
                 if let Some(mut target_idom_idx) = new_idom {
-                    for &p_id in &block.predecessors {
+                    for &p_id in block.predecessors {
                         if let Some(&p_idx) = id_to_idx.get(&p_id)
                             && p_idx != target_idom_idx
                             && idom[p_idx].is_some()
@@ -80,7 +129,7 @@ impl CHKAlgorithm {
             if let Some(dom_idx) = dom_opt {
                 let blk_id = blocks[blk_idx].id;
                 let dom_id = blocks[*dom_idx].id;
-                result.insert(blk_id, dom_id);
+                result.insert(*blk_id, *dom_id);
             }
         }
 
@@ -89,13 +138,13 @@ impl CHKAlgorithm {
 
     fn dfs_post_order(
         idx: BlockId,
-        blocks: &[&BasicBlock],
-        id_to_idx: &Dominators,
+        blocks: &[GraphNode],
+        id_to_idx: &HashMap<BlockId, usize>,
         visited: &mut [bool],
         post_order: &mut Vec<BlockId>,
     ) {
         visited[idx] = true;
-        for &succ_id in &blocks[idx].successors {
+        for &succ_id in blocks[idx].successors {
             if let Some(&succ_idx) = id_to_idx.get(&succ_id)
                 && !visited[succ_idx]
             {

@@ -4,7 +4,7 @@ use crate::{
     common::BlockId,
     opt::{
         cfg::{BasicBlock, ControlFlowGraph},
-        ssa::CHKAlgorithm,
+        ssa::{CHKAlgorithm, GraphNode},
     },
 };
 
@@ -35,28 +35,28 @@ impl LoopRecovery {
     }
 
     // Phase 1: Dominator Data-flow Analysis
-    // Computes all dominators for every basic block climing back the immediate dominators tree.
+    // Computes all dominators for every basic block climbing back the immediate dominators tree.
     fn compute_dominators(&self, cfg: &ControlFlowGraph) -> DominatorMap {
         let mut dominators = DominatorMap::new();
 
-        let blocks: Vec<&BasicBlock> = cfg.blocks.values().collect();
-        let immidiate_dominators = CHKAlgorithm::execute(&blocks);
+        let blocks: Vec<GraphNode> = cfg.blocks.values().map(Into::into).collect();
+        let immediate_dominators = CHKAlgorithm::execute(&blocks, cfg.start_block);
 
         for block in blocks {
             let mut block_dominators = HashSet::new();
-            block_dominators.insert(block.id);
+            block_dominators.insert(*block.id);
 
-            let mut it = block.id;
-            while let Some(idom) = immidiate_dominators.get(&it) {
-                if it == *idom {
+            let mut curr_id = *block.id;
+            while let Some(idom) = immediate_dominators.get(&curr_id) {
+                if curr_id == *idom {
                     break;
                 }
 
                 block_dominators.insert(*idom);
-                it = *idom;
+                curr_id = *idom;
             }
 
-            dominators.insert(block.id, block_dominators);
+            dominators.insert(*block.id, block_dominators);
         }
 
         dominators

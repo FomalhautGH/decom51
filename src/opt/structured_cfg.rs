@@ -10,9 +10,14 @@ use crate::{
 #[derive(Debug)]
 pub enum BlockKind {
     Flat(Vec<Mir51>),
-    Macro {
+    Loop {
         header: Box<StructuredBlock>,
-        blocks: Vec<StructuredBlock>,
+        body: Vec<StructuredBlock>,
+    },
+    Condition {
+        condition: Box<StructuredBlock>,
+        true_body: Vec<StructuredBlock>,
+        false_body: Vec<StructuredBlock>,
     },
 }
 
@@ -90,17 +95,45 @@ impl Display for StructuredBlock {
                     }
                 }
             }
-            BlockKind::Macro { header, blocks } => {
-                writeln!(f, "{}Macro Block {}:", indent_str, self.id)?;
+
+            BlockKind::Loop { header, body } => {
+                writeln!(f, "{}Loop Block {}:", indent_str, self.id)?;
                 writeln!(f, "{} Predecessors: {:?}", indent_str, self.predecessors)?;
                 writeln!(f, "{} Successors: {:?}", indent_str, self.successors)?;
 
                 writeln!(f, "{} Header:", indent_str)?;
                 write!(f, "{:width$}", header, width = indent + 4)?;
 
-                if !blocks.is_empty() {
+                if !body.is_empty() {
                     writeln!(f, "{} Body Blocks:", indent_str)?;
-                    for child in blocks {
+                    for child in body {
+                        write!(f, "{:width$}", child, width = indent + 4)?;
+                    }
+                }
+            }
+
+            BlockKind::Condition {
+                condition,
+                true_body,
+                false_body,
+            } => {
+                writeln!(f, "{}Condition Block {}:", indent_str, self.id)?;
+                writeln!(f, "{} Predecessors: {:?}", indent_str, self.predecessors)?;
+                writeln!(f, "{} Successors: {:?}", indent_str, self.successors)?;
+
+                writeln!(f, "{} Condition:", indent_str)?;
+                write!(f, "{:width$}", condition, width = indent + 4)?;
+
+                if !true_body.is_empty() {
+                    writeln!(f, "{} Body True Blocks:", indent_str)?;
+                    for child in true_body {
+                        write!(f, "{:width$}", child, width = indent + 4)?;
+                    }
+                }
+
+                if !false_body.is_empty() {
+                    writeln!(f, "{} Body False Blocks:", indent_str)?;
+                    for child in false_body {
                         write!(f, "{:width$}", child, width = indent + 4)?;
                     }
                 }
