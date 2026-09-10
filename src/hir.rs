@@ -25,8 +25,8 @@ pub enum Hir51 {
 
     IfElse {
         cond: Expr,
-        true_body: Vec<Hir51>,
-        false_body: Vec<Hir51>,
+        then_body: Vec<Hir51>,
+        else_body: Vec<Hir51>,
     },
 
     Goto {
@@ -101,8 +101,8 @@ impl Hir51 {
 
             Hir51::IfElse {
                 cond,
-                true_body,
-                false_body,
+                then_body: true_body,
+                else_body: false_body,
             } => {
                 writeln!(f, "{}if ({}) {{", indent_str, cond)?;
                 for child in true_body {

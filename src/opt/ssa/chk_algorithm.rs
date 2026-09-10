@@ -63,7 +63,7 @@ impl CHKAlgorithm {
             .collect();
 
         let entry_index =
-            entry_index.expect(&format!("Entry block with ID {entry_id} was not found"));
+            entry_index.unwrap_or_else(|| panic!("Entry block with ID {entry_id} was not found"));
 
         let mut post_order = Vec::new();
         let mut visited = vec![false; blocks.len()];

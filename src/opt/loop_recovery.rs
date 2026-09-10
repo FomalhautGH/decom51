@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     common::BlockId,
     opt::{
-        cfg::{BasicBlock, ControlFlowGraph},
+        cfg::ControlFlowGraph,
         ssa::{CHKAlgorithm, GraphNode},
     },
 };

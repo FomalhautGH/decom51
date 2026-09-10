@@ -35,20 +35,49 @@ impl ControlLogicExtraction {
             BlockKind::Flat(mirs) => self.extract_flat_block(mirs),
             BlockKind::Loop { header, body } => self.extract_loop_block(*header, body),
             BlockKind::Condition {
-                condition,
-                true_body,
-                false_body,
-            } => self.extract_condition_block(*condition, true_body, false_body),
+                condition_block,
+                then_body: true_body,
+                else_body: false_body,
+            } => self.extract_condition_block(*condition_block, true_body, false_body),
         }
     }
 
     fn extract_condition_block(
         &self,
-        condition: StructuredBlock,
+        condition_block: StructuredBlock,
         true_body: Vec<StructuredBlock>,
         false_body: Vec<StructuredBlock>,
     ) -> Vec<Hir51> {
-        todo!()
+        let mut then_body = Vec::new();
+        let mut else_body = Vec::new();
+
+        for block in true_body {
+            let hirs = self.extract_block(block);
+            then_body.extend(hirs);
+        }
+
+        for block in false_body {
+            let hirs = self.extract_block(block);
+            else_body.extend(hirs);
+        }
+
+        // Removes last goto for the else_body (cuz it is the actual
+        // then_body but it got inverted by sdcc), TODO: not a very robust implementation
+        else_body.pop();
+
+        // Extract the condition from the last instruction of the condition block
+        let BlockKind::Flat(mirs) = condition_block.kind else {
+            unreachable!()
+        };
+
+        let branch = mirs.into_iter().next_back().unwrap();
+        let cond = branch.extract_condition().unwrap();
+
+        vec![Hir51::IfElse {
+            cond: cond.simplify(),
+            then_body,
+            else_body,
+        }]
     }
 
     fn extract_flat_block(&self, mirs: Vec<Mir51>) -> Vec<Hir51> {

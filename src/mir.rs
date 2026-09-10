@@ -80,6 +80,13 @@ impl Expr {
             // (val != 0) -> val
             Expr::Ne(lhs, rhs) if let Expr::Constant(0) = rhs.as_ref() => lhs.simplify(),
 
+            // (val == 0) -> !val
+            Expr::Eq(lhs, rhs) if let Expr::Constant(0) = rhs.as_ref() => lhs.negate(),
+
+            // (val +/- 0) -> val
+            Expr::Add(lhs, rhs) if let Expr::Constant(0) = rhs.as_ref() => lhs.simplify(),
+            Expr::Sub(lhs, rhs) if let Expr::Constant(0) = rhs.as_ref() => lhs.simplify(),
+
             // (intval + var) > extval -> val >= (extval - intval + 1)
             Expr::Gt(rhs, lhs) => {
                 if let Expr::Add(add1, var) = rhs.as_ref()
@@ -94,6 +101,8 @@ impl Expr {
 
                 Expr::Gt(rhs, lhs)
             }
+
+            Expr::Le(lhs, rhs) => Expr::Le(Box::new(lhs.simplify()), Box::new(rhs.simplify())),
 
             _ => self,
         }
@@ -200,6 +209,14 @@ impl Mir51 {
 
             _ => None,
         }
+    }
+
+    pub fn extract_condition(self) -> Option<Expr> {
+        if let Mir51::If { cond, .. } = self {
+            return Some(cond);
+        }
+
+        None
     }
 }
 

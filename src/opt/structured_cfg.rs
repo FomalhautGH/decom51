@@ -15,9 +15,9 @@ pub enum BlockKind {
         body: Vec<StructuredBlock>,
     },
     Condition {
-        condition: Box<StructuredBlock>,
-        true_body: Vec<StructuredBlock>,
-        false_body: Vec<StructuredBlock>,
+        condition_block: Box<StructuredBlock>,
+        then_body: Vec<StructuredBlock>,
+        else_body: Vec<StructuredBlock>,
     },
 }
 
@@ -113,9 +113,9 @@ impl Display for StructuredBlock {
             }
 
             BlockKind::Condition {
-                condition,
-                true_body,
-                false_body,
+                condition_block: condition,
+                then_body: true_body,
+                else_body: false_body,
             } => {
                 writeln!(f, "{}Condition Block {}:", indent_str, self.id)?;
                 writeln!(f, "{} Predecessors: {:?}", indent_str, self.predecessors)?;

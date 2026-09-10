@@ -77,7 +77,7 @@ impl Optimizer {
         let mut ls = LoopStructuring::new(&structured_cfg);
         ls.execute(&mut structured_cfg, loop_tree);
 
-        let mut cs = ConditionStructuring::default();
+        let mut cs = ConditionStructuring;
         cs.execute(&mut structured_cfg);
 
         let mut cle = ControlLogicExtraction::default();
