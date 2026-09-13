@@ -57,6 +57,7 @@ impl From<Mir51> for Hir51 {
                 ret_val: None,
             },
             Mir51::If { .. } => unreachable!(),
+            Mir51::Nop => unreachable!(),
             Mir51::Goto(bid) => Hir51::Goto { jmp: bid },
             Mir51::Return => Hir51::Return,
         }

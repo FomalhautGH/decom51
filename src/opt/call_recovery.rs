@@ -54,6 +54,7 @@ impl CallRecovery {
                 | Mir51::Assign { .. }
                 | Mir51::If { .. }
                 | Mir51::Goto(_)
+                | Mir51::Nop
                 | Mir51::Return => {}
             }
         }

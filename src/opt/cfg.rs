@@ -25,6 +25,13 @@ impl BasicBlock {
         }
     }
 
+    pub fn merge_with(&mut self, mut rhs: BasicBlock) {
+        self.irs.append(&mut rhs.irs);
+        self.mirs.append(&mut rhs.mirs);
+        self.phis.append(&mut rhs.phis);
+        self.successors = rhs.successors;
+    }
+
     pub fn remove_useless_initializations(&mut self) {
         let mut initialized_vars = HashSet::new();
 
@@ -114,6 +121,40 @@ impl ControlFlowGraph {
 
             block.remove_useless_initializations();
             block.irs.retain(|ir| !matches!(ir, Ir51::Nop));
+            block.mirs.retain(|ir| !matches!(ir, Mir51::Nop));
+        }
+    }
+
+    pub fn merge_blocks(&mut self) {
+        let mut to_merge_edges = Vec::new();
+
+        for block in self.blocks.values() {
+            let [successor_id] = block.successors[..] else {
+                continue;
+            };
+
+            let successor = self.blocks.get(&successor_id).unwrap();
+
+            let [predecessor_id] = successor.predecessors[..] else {
+                continue;
+            };
+
+            if block.id == predecessor_id {
+                to_merge_edges.push((block.id, successor_id));
+            }
+        }
+
+        for (b1_id, b2_id) in to_merge_edges {
+            let b2 = self.blocks.remove(&b2_id).unwrap();
+            let b1 = self.blocks.get_mut(&b1_id).unwrap();
+
+            if let Some(Mir51::Goto(block_id)) = b1.mirs.last()
+                && *block_id == b2_id
+            {
+                b1.mirs.pop();
+            }
+
+            b1.merge_with(b2);
         }
     }
 }

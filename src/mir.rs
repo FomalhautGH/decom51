@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     common::BlockId,
-    lir::{Operand, Register, Size},
+    lir::{Operand, Register, Size, VarId},
 };
 
 use std::prelude::v1;
@@ -129,6 +129,14 @@ impl Expr {
             None
         }
     }
+
+    pub fn var_id(&self) -> Option<VarId> {
+        if let Expr::Var { id, .. } = self {
+            Some(*id)
+        } else {
+            None
+        }
+    }
 }
 
 impl TryFrom<Operand> for Expr {
@@ -173,6 +181,7 @@ pub enum Mir51 {
 
     Goto(BlockId),
     Return,
+    Nop,
 }
 
 impl Mir51 {
@@ -250,6 +259,7 @@ impl Display for Mir51 {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Mir51::Assign { dest, src } => write!(f, "{} = {}", dest, src),
+            Mir51::Nop => write!(f, "nop"),
             Mir51::Store { dest_ptr, value } => write!(f, "*{} = {}", dest_ptr, value),
             Mir51::If {
                 cond,

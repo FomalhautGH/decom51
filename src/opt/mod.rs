@@ -5,9 +5,9 @@ use crate::{
         call_recovery::CallRecovery, cfg_restorer::CFGRestorer, cle::ControlLogicExtraction,
         cond_structuring::ConditionStructuring, const_propagation::ConstPropagation,
         dbe::DeadBlockElimination, dce::DeadCodeElimination, dessa::DeSSA,
-        ebe::EmptyBlockElimination, expr_aggregation::ExprAggregation, loop_recovery::LoopRecovery,
-        loop_structuring::LoopStructuring, rewriter::Rewriter, ssa::SSABuilder,
-        structured_cfg::StructuredCFG, vwa::VariableWidthAggregation,
+        dse::DeadStoreElimination, ebe::EmptyBlockElimination, expr_aggregation::ExprAggregation,
+        loop_recovery::LoopRecovery, loop_structuring::LoopStructuring, rewriter::Rewriter,
+        ssa::SSABuilder, structured_cfg::StructuredCFG, vwa::VariableWidthAggregation,
     },
 };
 
@@ -20,6 +20,7 @@ mod const_propagation;
 mod dbe;
 mod dce;
 mod dessa;
+mod dse;
 mod ebe;
 mod expr_aggregation;
 mod loop_recovery;
@@ -71,6 +72,11 @@ impl Optimizer {
 
         let mut lr = LoopRecovery;
         let loop_tree = lr.execute(&cfg);
+
+        cfg.merge_blocks();
+
+        let mut dse = DeadStoreElimination::default();
+        dse.execute(&mut cfg);
 
         let mut structured_cfg = StructuredCFG::from(cfg);
 

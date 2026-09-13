@@ -10,14 +10,14 @@ use crate::{
 
 const VIRTUAL_EXIT_ID: BlockId = usize::MAX;
 
-type ImmediateDominators = HashMap<BlockId, BlockId>;
+type ImmediatePostDominators = HashMap<BlockId, BlockId>;
 type InvertedEdges = HashMap<BlockId, (Vec<BlockId>, Vec<BlockId>)>;
 
 struct Condition {
     predecessors: Vec<BlockId>,
-    head_id: BlockId,
-    true_id: BlockId,
-    false_id: BlockId,
+    header_id: BlockId,
+    then_id: BlockId,
+    else_id: BlockId,
     merge_id: BlockId,
 }
 
@@ -35,60 +35,64 @@ impl ConditionStructuring {
         }
     }
 
-    fn collapse(&mut self, cfg: &mut StructuredCFG, pdom: &ImmediateDominators) {
+    fn collapse(&mut self, cfg: &mut StructuredCFG, ipost_dominators: &ImmediatePostDominators) {
         let mut conditions = Vec::new();
 
         for block in cfg.blocks.values_mut() {
-            let [false_jmp, true_jmp] = block.successors[..] else {
+            let [else_target, then_target] = block.successors[..] else {
                 continue;
             };
 
-            let head_block_id = block.id;
-            let Some(merge_block_id) = pdom.get(&block.id) else {
+            let header_id = block.id;
+            let Some(merge_id) = ipost_dominators.get(&header_id) else {
                 continue;
             };
 
             conditions.push(Condition {
                 predecessors: block.predecessors.clone(),
-                head_id: head_block_id,
-                true_id: true_jmp,
-                false_id: false_jmp,
-                merge_id: *merge_block_id,
+                header_id,
+                then_id: then_target,
+                else_id: else_target,
+                merge_id: *merge_id,
             });
         }
 
         for condition in conditions {
-            let then_body =
-                Self::gather_branch_body_ids(condition.true_id, condition.merge_id, cfg);
-            let else_body =
-                Self::gather_branch_body_ids(condition.false_id, condition.merge_id, cfg);
+            let then_body_ids =
+                Self::gather_branch_body_ids(condition.then_id, condition.merge_id, cfg);
+            let else_body_ids =
+                Self::gather_branch_body_ids(condition.else_id, condition.merge_id, cfg);
 
             let merge_block = cfg.blocks.get_mut(&condition.merge_id).unwrap();
-            merge_block.predecessors = vec![condition.head_id];
+            merge_block.predecessors = vec![condition.header_id];
 
-            let head_block = cfg.blocks.remove(&condition.head_id).unwrap();
-            let then_body = Self::extract_blocks(cfg, then_body);
-            let else_body = Self::extract_blocks(cfg, else_body);
+            let condition_header_block = cfg.blocks.remove(&condition.header_id).unwrap();
+            let then_body = Self::extract_blocks(cfg, then_body_ids);
+            let else_body = Self::extract_blocks(cfg, else_body_ids);
 
-            let block = StructuredBlock {
-                id: condition.head_id,
+            let structured_condition_block = StructuredBlock {
+                id: condition.header_id,
                 successors: vec![condition.merge_id],
                 predecessors: condition.predecessors,
                 kind: BlockKind::Condition {
-                    condition_block: Box::new(head_block),
+                    condition_block: Box::new(condition_header_block),
                     then_body,
                     else_body,
                 },
             };
 
-            cfg.blocks.insert(condition.head_id, block);
+            cfg.blocks
+                .insert(condition.header_id, structured_condition_block);
         }
     }
 
-    fn extract_blocks(cfg: &mut StructuredCFG, blocks: HashSet<BlockId>) -> Vec<StructuredBlock> {
+    fn extract_blocks(
+        cfg: &mut StructuredCFG,
+        block_ids: HashSet<BlockId>,
+    ) -> Vec<StructuredBlock> {
         let mut extracted_blocks = Vec::new();
 
-        for block_id in blocks {
+        for block_id in block_ids {
             let block = cfg.blocks.remove(&block_id).unwrap();
             extracted_blocks.push(block);
         }
@@ -97,76 +101,77 @@ impl ConditionStructuring {
     }
 
     fn gather_branch_body_ids(
-        branch_id: BlockId,
+        branch_start_id: BlockId,
         merge_id: BlockId,
         cfg: &StructuredCFG,
     ) -> HashSet<BlockId> {
-        let mut body = HashSet::new();
+        let mut branch_body_ids = HashSet::new();
 
-        let mut current = branch_id;
-        while current != merge_id {
-            let current_block = cfg.blocks.get(&current).unwrap();
-            let [successor] = current_block.successors[..] else {
+        let mut current_id = branch_start_id;
+        while current_id != merge_id {
+            let current_block = cfg.blocks.get(&current_id).unwrap();
+            let [successor_id] = current_block.successors[..] else {
                 unreachable!()
             };
 
-            body.insert(current);
-            current = successor;
+            branch_body_ids.insert(current_id);
+            current_id = successor_id;
         }
 
-        body
+        branch_body_ids
     }
 
     // Creates an inverted adjacency representation of the Structured CFG
     // with a virtual exit node whose ID is `VIRTUAL_EXIT_ID` serving as the root
     // for the CHK Algorithm to calculate post-dominators.
     fn get_inverted_edges(cfg: &StructuredCFG) -> InvertedEdges {
-        let mut edges = InvertedEdges::new();
+        let mut inverted_edges = InvertedEdges::new();
 
         let mut virtual_exit_successors = HashSet::new();
 
         for block in cfg.blocks.values() {
-            let mut succ_set = HashSet::new();
-            let mut pred_set = HashSet::new();
+            let mut inverted_successors = HashSet::new();
+            let mut inverted_predecessors = HashSet::new();
 
-            for succ in &block.predecessors {
-                succ_set.insert(*succ);
+            for &pred in &block.predecessors {
+                inverted_successors.insert(pred);
             }
 
             if block.successors.is_empty() {
-                pred_set.insert(VIRTUAL_EXIT_ID);
+                inverted_predecessors.insert(VIRTUAL_EXIT_ID);
                 virtual_exit_successors.insert(block.id);
             } else {
-                for pred in &block.successors {
-                    pred_set.insert(*pred);
+                for &succ in &block.successors {
+                    inverted_predecessors.insert(succ);
                 }
             }
 
-            edges.insert(
+            inverted_edges.insert(
                 block.id,
                 (
-                    succ_set.into_iter().collect(),
-                    pred_set.into_iter().collect(),
+                    inverted_successors.into_iter().collect(),
+                    inverted_predecessors.into_iter().collect(),
                 ),
             );
         }
 
-        edges.insert(
+        inverted_edges.insert(
             VIRTUAL_EXIT_ID,
             (virtual_exit_successors.into_iter().collect(), Vec::new()),
         );
-        edges
+
+        inverted_edges
     }
 
-    fn compute_immediate_post_dominators(&self, cfg: &StructuredCFG) -> ImmediateDominators {
-        let edges = Self::get_inverted_edges(cfg);
+    fn compute_immediate_post_dominators(&self, cfg: &StructuredCFG) -> ImmediatePostDominators {
+        let inverted_edges = Self::get_inverted_edges(cfg);
 
-        let blocks: Vec<GraphNode> = edges
+        let graph_nodes: Vec<GraphNode> = inverted_edges
             .iter()
-            .map(|(id, (succ, pred))| (id, succ, pred))
+            .map(|(id, (succs, preds))| (id, succs, preds))
             .map(Into::into)
             .collect();
 
-        CHKAlgorithm::execute(&blocks, VIRTUAL_EXIT_ID)
+        CHKAlgorithm::execute(&graph_nodes, VIRTUAL_EXIT_ID)
     }
 }
