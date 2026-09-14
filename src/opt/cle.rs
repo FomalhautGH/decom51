@@ -61,10 +61,6 @@ impl ControlLogicExtraction {
             else_body.extend(hirs);
         }
 
-        // Removes last goto for the else_body (cuz it is the actual
-        // then_body but it got inverted by sdcc), TODO: not a very robust implementation
-        else_body.pop();
-
         // Extract the condition from the last instruction of the condition block
         let BlockKind::Flat(mirs) = condition_block.kind else {
             unreachable!()
@@ -73,11 +69,21 @@ impl ControlLogicExtraction {
         let branch = mirs.into_iter().next_back().unwrap();
         let cond = branch.extract_condition().unwrap();
 
-        vec![Hir51::IfElse {
-            cond: cond.simplify(),
-            then_body,
-            else_body,
-        }]
+        let if_stmt = if then_body.is_empty() {
+            Hir51::IfElse {
+                cond: cond.simplify().negate(),
+                then_body: else_body,
+                else_body: then_body,
+            }
+        } else {
+            Hir51::IfElse {
+                cond: cond.simplify(),
+                then_body,
+                else_body,
+            }
+        };
+
+        vec![if_stmt]
     }
 
     fn extract_flat_block(&self, mirs: Vec<Mir51>) -> Vec<Hir51> {
@@ -127,8 +133,6 @@ impl ControlLogicExtraction {
             }
             _ => unreachable!(),
         };
-
-        loop_body.pop(); // Remove last goto of while loop
 
         let while_loop = Hir51::While {
             cond: loop_condition,

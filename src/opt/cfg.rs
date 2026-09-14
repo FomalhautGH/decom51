@@ -110,6 +110,10 @@ pub struct ControlFlowGraph {
 // their respective method
 impl ControlFlowGraph {
     pub fn remove_useless_irs(&mut self) {
+        if cfg!(debug_assertions) {
+            println!("Removed useless IRS!!!!");
+        }
+
         // TODO: Use a better 'null' operand for the phis
         for block in self.blocks.values_mut() {
             block
@@ -122,6 +126,13 @@ impl ControlFlowGraph {
             block.remove_useless_initializations();
             block.irs.retain(|ir| !matches!(ir, Ir51::Nop));
             block.mirs.retain(|ir| !matches!(ir, Mir51::Nop));
+
+            if let Some(Mir51::Goto(block_id)) = block.mirs.last()
+                && let [successor] = block.successors[..]
+                && *block_id != block.id
+            {
+                block.mirs.pop();
+            }
         }
     }
 

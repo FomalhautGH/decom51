@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, convert::identity};
 
 use crate::{
     common::{Addr, AddrSpace, BinOp, Constant, Ir51, Operand},
@@ -171,12 +171,17 @@ impl VariableWidthAggregation {
             unreachable!()
         };
 
-        let (low_lhs_init_op, _) = Self::find_last_initialization(&low_lhs, irs, low_add_idx)?;
+        let (low_lhs_init_op, low_lhs_init_idx) =
+            Self::find_last_initialization(&low_lhs, irs, low_add_idx)?;
         let low_lhs_const = low_lhs_init_op.to_const_value()?;
 
-        let (low_rhs_init_op, start_idx) =
-            Self::find_last_initialization(&low_rhs, irs, low_add_idx)?;
-        let low_rhs_addr = low_rhs_init_op.to_var_addr()?;
+        let (low_rhs_addr, start_idx) = if let Some((low_rhs_init_op, start_idx)) =
+            Self::find_last_initialization(&low_rhs, irs, low_add_idx)
+        {
+            (low_rhs_init_op.to_var_addr()?, start_idx)
+        } else {
+            (low_rhs.to_var_addr()?, low_lhs_init_idx)
+        };
 
         let (low_dest_op, _) = Self::find_next_usage(&accumulator, irs, low_add_idx)?;
         let low_dest_addr = low_dest_op.to_var_addr()?;
@@ -223,7 +228,7 @@ impl VariableWidthAggregation {
             op: BinOp::Addc,
             dest: high_dest,
             lhs: _high_lhs,
-            rhs: _high_rhs,
+            rhs: high_rhs,
         } = irs[high_addc_idx]
         else {
             unreachable!()
@@ -238,16 +243,26 @@ impl VariableWidthAggregation {
             op: BinOp::Add,
             lhs: low_lhs,
             rhs: low_rhs,
-            ..
+            dest: low_dest,
         } = irs[low_add_idx]
         else {
             unreachable!()
         };
 
-        let low_rhs_addr = low_rhs.to_var_addr()?;
         let (low_lhs_op, start_idx) = Self::find_last_initialization(&low_lhs, irs, low_add_idx)?;
-        let (low_dest_op, _) = Self::find_next_usage(&accumulator, irs, low_add_idx)?;
+
+        if let Operand::Constant(0xFF) = high_rhs
+            && let Operand::Constant(0xFF) = low_rhs
+        {
+            let result = Self::subtract_by_one(low_lhs_op, start_idx, end_idx, irs);
+            if result.is_some() {
+                return result;
+            }
+        };
+
         let low_lhs_addr = low_lhs_op.to_var_addr()?;
+        let low_rhs_addr = low_rhs.to_var_addr()?;
+        let (low_dest_op, _) = Self::find_next_usage(&accumulator, irs, low_add_idx)?;
         let low_dest_addr = low_dest_op.to_var_addr()?;
 
         let op = BinOp::Add;
@@ -268,6 +283,39 @@ impl VariableWidthAggregation {
             space: AddrSpace::iData,
             size: 2,
         };
+
+        Some(FusedOperation {
+            start_idx,
+            end_idx,
+            op,
+            dest,
+            lhs,
+            rhs,
+        })
+    }
+
+    fn subtract_by_one(
+        dest_op: Operand,
+        start_idx: usize,
+        end_idx: usize,
+        irs: &[Ir51],
+    ) -> Option<FusedOperation> {
+        let (mut current_op, mut current_idx) = (dest_op, start_idx);
+        while let Some((op, idx)) = Self::find_last_initialization(&current_op, irs, current_idx) {
+            (current_op, current_idx) = (op, idx)
+        }
+
+        let dest_addr = current_op.to_var_addr()?;
+
+        let op = BinOp::Sub;
+        let dest = Operand::Var {
+            addr: dest_addr,
+            space: AddrSpace::iData,
+            size: 2,
+        };
+
+        let lhs = dest;
+        let rhs = Operand::Constant(1);
 
         Some(FusedOperation {
             start_idx,
