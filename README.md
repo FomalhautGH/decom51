@@ -2,6 +2,9 @@
 
 `decom51` (whose name originates from the companion disassembler [dis51](https://plit.de/asem-51/dis51.html)) is a specialized, semantics-aware decompiler written in Rust, designed to translate **Intel MCS-51 (8051)** assembly into clean, structured, and readable **C** source code.
 
+> [!NOTE]
+> **Zero External Dependencies**: `decom51` is implemented entirely from scratch using exclusively the **Rust Standard Library** (`std`). The project relies on **no external crates** (`[dependencies]` in `Cargo.toml` is completely empty)—from custom lexer and parser to SSA dominance frontier algorithms (CHK), dataflow optimizations (SCCP, DCE), control-flow structuring, and C code generation.
+
 ---
 
 ## 📖 Overview & Limitations
@@ -9,7 +12,7 @@
 The decompiler accepts disassembled 8051 assembly code and lifts it through a multi-tier intermediate representation (IR) pipeline into high-level C constructs, with a focus on multi-byte variable aggregation and structured control flow recovery.
 
 > [!WARNING]
-> **Some of the current limitations**:
+> **Current Limitations**:
 > - **Memory Spaces**: Only internal RAM (`idata` / direct registers) is supported; external memory (`xdata`, `pdata`, `code`) is not yet handled.
 > - **Register Banking**: Dynamic switching of register banks `R0`-`R7` via `PSW` (`RS0`/`RS1`) is not tracked.
 > - **Variable Width Aggregation**: Calibrated for up to 16-bit variables (`unsigned int`); 32-bit types (`long`) or floats are not supported.
@@ -119,7 +122,7 @@ graph TD
 ## 🛠️ Usage with [dis51](https://plit.de/asem-51/dis51.html)
 
 ### Prerequisites
-- **Rust Toolchain** (edition 2021): install via [rustup](https://rustup.rs/) or directly via your distribution's package manager:
+- **Rust Toolchain** (edition 2024): install via [rustup](https://rustup.rs/) or directly via your distribution's package manager:
   - Arch Linux: `sudo pacman -S rust`
   - Fedora / RHEL: `sudo dnf install cargo rust`
   - Debian / Ubuntu: `sudo apt install cargo rustc`
@@ -178,5 +181,9 @@ while (1) {
 ---
 
 ## 🎓 Academic Context
+ 
+`decom51` was developed as a Bachelor's Degree thesis project in Computer Science.
 
-`decom51` was developed as a Bachelor's Degree thesis project in Computer Science. The theoretical formulation, intermediate representation formalizations, and architectural evaluations are documented in the companion thesis repository: **[thesis51](https://github.com/FomalhautGH/thesis51)**.
+Building an exhaustive, industry-grade decompiler (such as Ghidra or IDA Pro) represents a monumental engineering effort developed by specialized teams over decades. Developed entirely by a single individual within the finite timeframe of an undergraduate thesis, the project was purposefully scoped to demonstrate core compilation and decompilation principles—such as pure-Rust zero-dependency IR design, custom SSA construction, and domain-specific variable aggregation—rather than attempting to cover the entire spectrum of 8051 hardware variations and quirks.
+
+The theoretical formulation, intermediate representation formalizations, and architectural evaluations are documented in the companion thesis repository: **[thesis51](https://github.com/FomalhautGH/thesis51)**.
